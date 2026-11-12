@@ -7,7 +7,7 @@ export function useReferenceSort(rows) {
     const left = a[sort.key], right = b[sort.key]
     const numeric = value => Number(String(value).replace(/[$,%\s,]|bps/g, ''))
     const x = numeric(left), y = numeric(right)
-    const dateKey = ['effectiveDate', 'expiryDate'].includes(sort.key)
+    const dateKey = ['effectiveDate', 'expiryDate', 'expiry'].includes(sort.key)
     const result = dateKey ? new Date(left) - new Date(right) : Number.isFinite(x) && Number.isFinite(y) ? x - y : String(left).localeCompare(String(right))
     return result * sort.direction
   })
