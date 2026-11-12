@@ -14,4 +14,6 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
       Long connectionId, Long borrowerReservationId);
 
   Optional<Reservation> findByLocateId(Long locateId);
+
+  Page<Reservation> findByOrganizationIdAndMslaId(Long organizationId, Long mslaId, Pageable pageable);
 }

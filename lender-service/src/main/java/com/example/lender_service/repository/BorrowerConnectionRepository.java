@@ -12,4 +12,6 @@ public interface BorrowerConnectionRepository extends JpaRepository<BorrowerConn
 
   Optional<BorrowerConnection> findByOrganizationIdAndExternalIdAndBorrowerOrganizationId(
       Long organizationId, String externalId, Long borrowerOrganizationId);
+
+  List<BorrowerConnection> findByOrganizationId(Long organizationId);
 }

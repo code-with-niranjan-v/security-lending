@@ -4,6 +4,8 @@ import { designAgreements } from '../data/designAgreements'
 import ReferenceTable, { Badge } from '../components/reference/ReferenceTable'
 import { useReferenceSort } from '../hooks/useReferenceSort'
 import './ReferencePages.css'
+import LiveAgreementsPage from './LiveAgreementsPage'
+import { useDataSource } from '../hooks/useDataSource'
 
 const columns = [['id', 'Agreement ID'], ['borrower', 'Borrower'], ['status', 'Status'], ['effectiveDate', 'Effective date'], ['expiryDate', 'Expiry date'], ['fee', 'Lending fee rate'], ['rebate', 'Rebate frequency'], ['collateralRatio', 'Collateral ratio'], ['recall', 'Recall'], ['activeLoans', 'Active loans'], ['exposure', 'Exposure']]
 
@@ -18,6 +20,11 @@ function AgreementDetails({ agreement }) {
 }
 
 export default function AgreementsPage() {
+  const { mode } = useDataSource()
+  return mode === 'live' ? <LiveAgreementsPage /> : <DemoAgreementsPage />
+}
+
+function DemoAgreementsPage() {
   const { searchTerm = '' } = useOutletContext()
   const [expanded, setExpanded] = useState('MSLA-00124')
   const [borrower, setBorrower] = useState('All borrowers')

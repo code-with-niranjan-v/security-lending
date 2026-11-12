@@ -12,4 +12,6 @@ public interface LocateRequestRepository extends JpaRepository<LocateRequest, Lo
 
   Optional<LocateRequest> findByConnectionIdAndBorrowerLocateId(
       Long connectionId, Long borrowerLocateId);
+
+  Page<LocateRequest> findByOrganizationIdAndMslaId(Long organizationId, Long mslaId, Pageable pageable);
 }

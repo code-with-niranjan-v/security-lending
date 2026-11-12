@@ -13,4 +13,6 @@ public interface LoanRepository extends JpaRepository<Loan, Long> {
   Optional<Loan> findByConnectionIdAndBorrowerLoanId(Long connectionId, Long borrowerLoanId);
 
   List<Loan> findByMslaId(Long mslaId);
+
+  List<Loan> findByOrganizationIdAndMslaIdIn(Long organizationId, Collection<Long> mslaIds);
 }

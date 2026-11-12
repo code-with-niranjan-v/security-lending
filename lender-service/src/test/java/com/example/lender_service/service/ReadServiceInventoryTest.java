@@ -9,7 +9,6 @@ import com.example.lender_service.dto.InventorySummary;
 import com.example.lender_service.model.InventoryPosition;
 import com.example.lender_service.model.SecurityMaster;
 import com.example.lender_service.repository.*;
-import com.example.lender_service.dto.MarketPrice;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -78,7 +77,6 @@ class ReadServiceInventoryTest {
     when(inventoryPosition.findByOrganizationId(eq(org), any(Pageable.class)))
         .thenReturn(new PageImpl<>(List.of(position)));
     when(securities.findById(securityId)).thenReturn(java.util.Optional.of(security));
-    when(market.price(securityId)).thenReturn(new MarketPrice(new BigDecimal("192.45"), Instant.now()));
 
     var service =
         new ReadService(

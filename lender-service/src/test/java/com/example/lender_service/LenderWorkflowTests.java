@@ -57,6 +57,8 @@ class LenderWorkflowTests {
   @Autowired RecallRepository recalls;
   @Autowired LoanDefaultRepository defaults;
   @Autowired MockMvc mvc;
+  @Autowired SecurityMasterRepository securityMasterForScreenTest;
+  @Autowired LendingFeeRepository feesForScreenTest;
   static final AtomicLong ids = new AtomicLong(10000);
 
   static BigDecimal bd(String s) {
@@ -171,6 +173,128 @@ class LenderWorkflowTests {
                 version,
                 Instant.now(),
                 json.tree(json.write(data)))));
+  }
+
+  @Test
+  void agreementsScreenOverviewAndPanelsAreOrganizationScoped() throws Exception {
+    var o = organization();
+    var c = connection(o);
+    long securityId = security("100");
+    inventory.create(o.getId(), new InventoryRequest(securityId, 1000, "Custody"));
+    var a = agreement(o, c, securityId, true);
+    reservation(o, c, securityId, 100);
+    var l = pendingLoan(o, c, 100);
+    var pledge = positions.findByConnectionIdAndBorrowerPositionId(c.getId(), 400L).orElseThrow();
+    collateral.confirm(o.getId(), pledge.getId(), "SCREEN-COLLATERAL");
+    loanService.decide(o.getId(), l.getId(), true, "Approved");
+    loanService.settle(o.getId(), l.getId(), "SCREEN-SETTLEMENT");
+    var fee = new LendingFee();
+    fee.setOrganizationId(o.getId()); fee.setConnectionId(c.getId()); fee.setLoanId(l.getId());
+    fee.setOwnerReferenceId(901L); fee.setSourceVersion(1L); fee.setSourceData("{}"); fee.setStatus("DUE");
+    fee.setCreatedAt(Instant.now()); fee.setAmount(bd("12.34")); fee.setRate(bd("0.03"));
+    fee.setPeriodStart(LocalDate.now()); fee.setPeriodEnd(LocalDate.now()); fee.setDueDate(LocalDate.now().plusDays(10));
+    feesForScreenTest.saveAndFlush(fee);
+    var rebate = new Rebate();
+    rebate.setOrganizationId(o.getId()); rebate.setConnectionId(c.getId()); rebate.setLoanId(l.getId());
+    rebate.setOwnerReferenceId(902L); rebate.setSourceVersion(1L); rebate.setSourceData("{}"); rebate.setStatus("PAID");
+    rebate.setCreatedAt(Instant.now()); rebate.setAmount(bd("1.23")); rebate.setRate(bd("0.01"));
+    rebate.setAccrualDate(LocalDate.now()); rebate.setPaymentDate(LocalDate.now());
+    rebates.saveAndFlush(rebate);
+    String base = "/api/v1/organizations/" + o.getId() + "/lenddesk/agreements";
+    mvc.perform(get(base + "/overview").param("size", "1"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.activeAgreementCount").value(1))
+        .andExpect(jsonPath("$.data.agreements.totalElements").value(1))
+        .andExpect(jsonPath("$.data.agreements.content[0].borrowerName").value("Borrower firm"))
+        .andExpect(jsonPath("$.data.agreements.content[0].feeRateBps").value(300.0))
+        .andExpect(jsonPath("$.data.agreements.content[0].coveragePercent").value(105.0))
+        .andExpect(jsonPath("$.data.agreements.content[0].totalExposure").value(10000.0))
+        .andExpect(jsonPath("$.data.agreements.content[0].currency").value("INR"))
+        .andExpect(jsonPath("$.data.agreements.content[0].activeLoanCount").value(1));
+    mvc.perform(get(base + "/" + a.getId() + "/screen"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.agreement.id").value(a.getId()))
+        .andExpect(jsonPath("$.data.collateralRules[0].eligible").value(true))
+        .andExpect(jsonPath("$.data.collateralRules[0].concentrationLimitPercent").isEmpty())
+        .andExpect(jsonPath("$.data.activeLoans[0].id").value(l.getId()))
+        .andExpect(jsonPath("$.data.recentActivityCount").value(2))
+        .andExpect(jsonPath("$.data.billingCount").value(2))
+        .andExpect(jsonPath("$.data.billing[0].amount").value(12.34))
+        .andExpect(jsonPath("$.data.billing[1].type").value("REBATE"))
+        .andExpect(jsonPath("$.data.audit").isNotEmpty());
+    mvc.perform(get(base + "/overview").param("recallAllowed", "false"))
+        .andExpect(jsonPath("$.data.agreements.totalElements").value(0));
+    mvc.perform(get(base + "/overview").param("connectionId", String.valueOf(c.getId())).param("q", "BORROWER"))
+        .andExpect(jsonPath("$.data.agreements.totalElements").value(1));
+    mvc.perform(get(base + "/overview").param("activeOn", a.getExpiryDate().plusDays(1).toString()))
+        .andExpect(jsonPath("$.data.agreements.totalElements").value(0));
+    var other = organization();
+    mvc.perform(get("/api/v1/organizations/" + other.getId() + "/lenddesk/agreements/" + a.getId() + "/screen"))
+        .andExpect(status().isNotFound());
+    mvc.perform(get("/api/v1/organizations/" + other.getId() + "/lenddesk/agreements/overview"))
+        .andExpect(jsonPath("$.data.agreements.totalElements").value(0))
+        .andExpect(jsonPath("$.data.borrowers").isEmpty());
+    mvc.perform(get(base + "/overview").param("page", "-1")).andExpect(status().isBadRequest());
+    mvc.perform(get(base + "/overview").param("size", "201")).andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void agreementsScreenMissingPriceIsUnknownAndLiteralSearchIsNotAWildcard() throws Exception {
+    var o = organization();
+    var c = connection(o);
+    long securityId = security("100");
+    inventory.create(o.getId(), new InventoryRequest(securityId, 1000, "Custody"));
+    var a = agreement(o, c, securityId, false);
+    reservation(o, c, securityId, 100);
+    var l = pendingLoan(o, c, 100);
+    l.setStatus("ACTIVE");
+    loans.saveAndFlush(l);
+    var security = securityMasterForScreenTest.findById(securityId).orElseThrow();
+    security.setPrice(null);
+    securityMasterForScreenTest.saveAndFlush(security);
+    String base = "/api/v1/organizations/" + o.getId() + "/lenddesk/agreements";
+    mvc.perform(get(base + "/overview"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.agreements.content[0].unpricedLoanCount").value(1))
+        .andExpect(jsonPath("$.data.agreements.content[0].totalExposure").isEmpty());
+    mvc.perform(get(base + "/" + a.getId() + "/screen"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.activeLoans[0].marketValue").isEmpty());
+    mvc.perform(get(base + "/overview").param("q", "%"))
+        .andExpect(jsonPath("$.data.agreements.totalElements").value(0));
+    a.setNumber("MSLA-%-literal");
+    agreements.saveAndFlush(a);
+    mvc.perform(get(base + "/overview").param("q", "%"))
+        .andExpect(jsonPath("$.data.agreements.totalElements").value(1));
+  }
+
+  @Test
+  void agreementsScreenPaginationAndStatusCountRemainConsistent() throws Exception {
+    var o = organization();
+    var c = connection(o);
+    var a = agreement(o, c, 0, true);
+    a.setNumber("SECONDZAGREEMENT");
+    agreements.saveAndFlush(a);
+    var proposed = new Msla();
+    org.springframework.beans.BeanUtils.copyProperties(a, proposed, "id");
+    proposed.setBorrowerMslaId(11L); proposed.setNumber("SECOND_AGREEMENT");
+    proposed.setStatus("PROPOSED"); proposed.setRecallAllowed(false);
+    agreements.saveAndFlush(proposed);
+    String base = "/api/v1/organizations/" + o.getId() + "/lenddesk/agreements/overview";
+    mvc.perform(get(base).param("size", "1"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.agreements.totalPages").value(2))
+        .andExpect(jsonPath("$.data.agreements.content[0].id").value(proposed.getId()));
+    mvc.perform(get(base).param("size", "1").param("page", "1"))
+        .andExpect(jsonPath("$.data.agreements.content[0].id").value(a.getId()));
+    mvc.perform(get(base).param("status", "PROPOSED"))
+        .andExpect(jsonPath("$.data.activeAgreementCount").value(1))
+        .andExpect(jsonPath("$.data.agreements.totalElements").value(1));
+    mvc.perform(get(base).param("q", "SECOND_"))
+        .andExpect(jsonPath("$.data.agreements.totalElements").value(1));
+    mvc.perform(get(base).param("size", "1").param("page", "2"))
+        .andExpect(jsonPath("$.data.agreements.content").isEmpty())
+        .andExpect(jsonPath("$.data.agreements.totalElements").value(2));
   }
 
   @Test

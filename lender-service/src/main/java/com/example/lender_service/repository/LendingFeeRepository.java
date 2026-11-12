@@ -12,4 +12,6 @@ public interface LendingFeeRepository extends JpaRepository<LendingFee, Long> {
 
   Optional<LendingFee> findByOrganizationIdAndOwnerReferenceId(
       Long organizationId, Long ownerReferenceId);
+
+  Page<LendingFee> findByOrganizationIdAndLoanIdIn(Long organizationId, Collection<Long> loanIds, Pageable pageable);
 }

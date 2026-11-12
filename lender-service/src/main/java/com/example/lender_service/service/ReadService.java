@@ -305,7 +305,7 @@ public class ReadService {
 
   private AgreementSummary toAgreementSummary(Msla a) {
     var connection = borrowerConnection.findById(a.getConnectionId()).orElse(null);
-    long borrowerOrgId = connection == null ? null : connection.getBorrowerOrganizationId();
+    Long borrowerOrgId = connection == null ? null : connection.getBorrowerOrganizationId();
     String borrowerName = connection == null ? "Unknown borrower" : connection.getName();
     String borrowerExternalId = connection == null ? null : connection.getExternalId();
     long activeLoanCount =
