@@ -1,25 +1,32 @@
-import { Fragment, useMemo, useState } from 'react'
-import { useOutletContext } from 'react-router-dom'
-import StatusBadge from '../components/StatusBadge'
-import { counterparties } from '../data/borrowerData'
-
-const statusTone = (status) => ({ Approved: 'good', 'Pending review': 'warn', Restricted: 'risk', Active: 'good', 'Under review': 'warn', Suspended: 'risk' }[status] ?? 'neutral')
-
-export default function BorrowersPage() {
-  const { searchTerm } = useOutletContext()
-  const [status, setStatus] = useState('All statuses')
-  const [selectedId, setSelectedId] = useState('CP-00017')
-  const [expandedId, setExpandedId] = useState('CP-00017')
-  const rows = useMemo(() => counterparties.filter((counterparty) => (status === 'All statuses' || counterparty.status === status) && Object.values(counterparty).join(' ').toLowerCase().includes(searchTerm.toLowerCase())), [status, searchTerm])
-
-  function selectCounterparty(id) {
-    setSelectedId(id)
-    setExpandedId((current) => current === id ? null : id)
-  }
-
-  return <>
-    <section className="heading borrower-heading"><h1>Borrowers &amp; Counterparties</h1><div><span>Approved <b>31</b></span><span>Aggregate limit <b>$4.50B</b></span><span>Limit utilised <b>40.9%</b></span><span className="critical">1 review overdue</span></div><button className="primary-action" type="button">+ Onboard counterparty</button></section>
-    <section className="counterparty-filters panel"><div><label>Counterparty<input placeholder="Search counterparty, LEI, agreement or contact" /></label><label>Region<select><option>All regions</option><option>Americas</option><option>EMEA</option><option>APAC</option></select></label><label>Approval status<select value={status} onChange={(event) => setStatus(event.target.value)}><option>All statuses</option><option>Approved</option><option>Pending review</option><option>Restricted</option></select></label></div><div><button className="link" type="button" onClick={() => setStatus('All statuses')}>Clear filters</button><button className="outline-action" type="button">Export counterparties</button></div></section>
-    <section className="counterparty-workspace"><article className="panel counterparty-register"><div className="panel-title"><h2>Counterparty register <small>{rows.length} shown</small></h2><small>Expand a counterparty to view linked agreements</small></div><div className="scroll"><table><thead><tr><th /><th>Counterparty</th><th>LEI identifier</th><th>Classification</th><th>Region</th><th>Rating</th><th>Credit limit</th><th>Utilised</th><th>Exposure</th><th>Coverage</th><th>Status</th><th>Next review</th></tr></thead><tbody>{rows.map((counterparty) => <Fragment key={counterparty.id}><tr className={selectedId === counterparty.id ? 'selected' : ''} onClick={() => selectCounterparty(counterparty.id)}><td><button className="row-expander" type="button" aria-label={`${expandedId === counterparty.id ? 'Collapse' : 'Expand'} ${counterparty.name}`}>{expandedId === counterparty.id ? '⌄' : '›'}</button></td><td><a>{counterparty.name}</a><small className="table-subline">{counterparty.id}</small></td><td className="mono">{counterparty.lei}</td><td>{counterparty.classification}</td><td>{counterparty.region}</td><td><b>{counterparty.rating}</b></td><td className="num">{counterparty.limit}</td><td><div className="utilisation"><span><i style={{ width: `${counterparty.utilisation}%` }} /></span><b>{counterparty.utilisation}%</b></div></td><td className="num">{counterparty.exposure}</td><td className="coverage">{counterparty.coverage}</td><td><StatusBadge tone={statusTone(counterparty.status)}>{counterparty.status}</StatusBadge></td><td className={counterparty.review === 'Review overdue' ? 'review-overdue' : ''}>{counterparty.review}</td></tr>{expandedId === counterparty.id && <tr className="child-row"><td colSpan="12"><div className="child-table counterparty-child"><div><b>Agreements with {counterparty.name}</b><span>{counterparty.agreements.length} agreement{counterparty.agreements.length === 1 ? '' : 's'} linked</span></div><table><thead><tr><th>MSLA ID</th><th>Framework</th><th>On-loan value</th><th>Active loans</th><th>Status</th></tr></thead><tbody>{counterparty.agreements.map((agreement) => <tr key={agreement[0]}><td><a>{agreement[0]}</a></td><td>{agreement[1]}</td><td className="num">{agreement[2]}</td><td className="num">{agreement[3]}</td><td><StatusBadge tone={statusTone(agreement[4])}>{agreement[4]}</StatusBadge></td></tr>)}</tbody></table></div></td></tr>}</Fragment>)}</tbody></table></div><footer>Showing {rows.length} of 31 approved counterparties · Exposure is refreshed from end-of-day collateral valuations</footer></article></section>
-  </>
+import { useState } from 'react'
+import { Link, useOutletContext } from 'react-router-dom'
+import ReferenceTable, {Badge} from '../components/reference/ReferenceTable'
+import ReferenceRegister from '../components/reference/ReferenceRegister'
+import { designBorrowers,borrowerMslas } from '../data/designBorrowers'
+import { designAgreements } from '../data/designAgreements'
+import './ReferencePages.css'
+import './FinanceReferencePages.css'
+const columns=[['name','Borrower'],['lei','Legal entity ID'],['status','Status'],['mslas','Active MSLAs'],['loans','Active loans'],['exposure','On-loan exposure'],['ratio','Collateral ratio'],['marginCalls','Open margin calls'],['recalls','Open recalls'],['settlements','Pending settlements'],['activity','Last activity']]
+function BorrowerDetails({row}){
+ if(row.name!=='Everest Capital')return <div className="ref-empty">No additional borrower details for {row.name} are included in the reference snapshot.</div>
+ return <div className="borrower-reference-details"><section className="borrower-identity-strip">{[['♙','Settlement account','EVRST-SETT-001'],['⇄','FIX identity (SenderCompID)','EVRST01'],['⇄','FIX target (TargetCompID)','APLPRIME01'],['♜','Settlement bank','JPMorgan Chase (JPM)'],['▣','Account currency','USD'],['◎','Institution type','Hedge Fund']].map(([icon,label,value])=><div key={label}><span aria-hidden="true">{icon}</span><div><small>{label}</small><strong>{value}</strong></div></div>)}</section><div className="borrower-reference-cards">
+ <div><Link className="borrower-view-all" to="/agreements">View all →</Link><ReferenceTable title="MSLAs (5)" headers={['MSLA ID','Status','Effective date','Expiry date']} rows={borrowerMslas.map(([id,start,end])=>[<Link to={`/agreements/${id}`}>{id}</Link>,<Badge>Active</Badge>,start,end])}/></div>
+ <div><Link className="borrower-view-all" to="/loans">View all →</Link><ReferenceTable title="Active loans (14)" headers={['Loan ID','Security','Quantity','Market value','Start date']} rows={designAgreements[0].loanRows.map(([id,...cells])=>[<Link to={`/loans/${id}`}>{id}</Link>,...cells])}/></div>
+ <div><Link className="borrower-view-all" to="/returns">View all →</Link><ReferenceTable title="Operational exceptions (3)" headers={['Exception type','Details','Opened','Status']} rows={[
+ ['Pending settlement','$12,500,000 (T+1)','Jan 28, 2025',<Badge tone="warn">Open</Badge>],
+ ['Margin call (informational)','Ratio 102.0% (monitor)','Jan 27, 2025',<Badge tone="warn">Open</Badge>],
+ ['Recall (aging)','2 loans, 3.2M shares','Jan 26, 2025',<Badge tone="warn">Open</Badge>],
+ ]}/></div></div></div>
+}
+export default function BorrowersPage(){
+ const {searchTerm=''}=useOutletContext()
+ const [expanded,setExpanded]=useState(designBorrowers[0].id)
+ const [status,setStatus]=useState(''),[msla,setMsla]=useState(''),[activity,setActivity]=useState(''),[range,setRange]=useState('Last 90 days'),[showAdd,setShowAdd]=useState(false)
+ const rows=designBorrowers.filter(row=>(!status||row.status===status)&&(!msla||row.mslas>0)&&(!activity||(activity==='With exceptions'?row.marginCalls+row.recalls+row.settlements>0:row.marginCalls+row.recalls+row.settlements===0))&&(range!=='January 2025'||row.activity.startsWith('Jan'))&&`${row.name} ${row.lei}`.toLowerCase().includes(searchTerm.toLowerCase()))
+ function cell(row,key){if(key==='status')return <Badge>{row.status}</Badge>;if(key==='exposure')return <span className="finance-number">{new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(row.exposure)}</span>;if(key==='ratio')return `${row.ratio.toFixed(1)}%`;return row[key]}
+ return <section className="ref-page borrower-reference"><header className="ref-heading"><h1>Borrowers &amp; Counterparties</h1><span className="ref-active-count">14 institutions</span><button className="ref-primary" onClick={()=>setShowAdd(true)}>Add borrower</button></header><section className="ref-filters borrower-reference-filters" aria-label="Borrower filters">
+ <label>Status<select aria-label="Status" value={status} onChange={event=>setStatus(event.target.value)}><option value="">All statuses</option><option>Active</option><option>Suspended</option></select></label><label>Type<select aria-label="Type"><option>All types</option></select></label><label>Jurisdiction<select aria-label="Jurisdiction"><option>All jurisdictions</option></select></label><label>MSLA status<select aria-label="MSLA status" value={msla} onChange={event=>setMsla(event.target.value)}><option value="">All</option><option>Active</option></select></label><label>Activity<select aria-label="Activity" value={activity} onChange={event=>setActivity(event.target.value)}><option value="">All activity</option><option>With exceptions</option><option>No exceptions</option></select></label><label>Date range<select aria-label="Date range" value={range} onChange={event=>setRange(event.target.value)}><option>Last 90 days</option><option>All dates</option><option>January 2025</option></select></label></section>
+ <ReferenceRegister columns={columns} rows={rows} expanded={expanded} setExpanded={setExpanded} cell={cell} details={row=><BorrowerDetails row={row}/>} className="borrower-reference-table"/>
+ {showAdd&&<div className="ref-modal-backdrop"><section className="ref-modal" role="dialog" aria-modal="true" aria-labelledby="add-borrower-title"><h2 id="add-borrower-title">Add borrower</h2><p>This demo displays the reference institutions. Use the Lending Lab registration workflow to create a borrower.</p><button className="ref-primary" onClick={()=>setShowAdd(false)}>Close</button></section></div>}
+ </section>
 }

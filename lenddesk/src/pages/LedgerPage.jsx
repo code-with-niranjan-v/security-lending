@@ -1,3 +1,8 @@
 import OperationalRegisterPage from '../components/OperationalRegisterPage'
 import { ledgerConfig } from '../data/remainingData'
-export default function LedgerPage() { return <OperationalRegisterPage config={ledgerConfig} /> }
+import { useDataSource } from '../hooks/useDataSource'
+import LedgerDemoPage from './LedgerDemoPage'
+export default function LedgerPage() {
+ const {mode}=useDataSource()
+ return mode==='live'?<OperationalRegisterPage config={ledgerConfig}/>:<LedgerDemoPage/>
+}
