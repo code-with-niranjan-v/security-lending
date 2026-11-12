@@ -137,3 +137,29 @@
  .wf-summary > div { font-size: 10px; padding: 3px 0; }
  .wf-context { padding: 6px 9px; margin-bottom: 8px; }
 }
+.wf-header-actions { display: flex; gap: 10px; margin-left: auto; }
+.wf-header-actions a { padding: 6px 12px; border: 1px solid #c9bce7; border-radius: 4px; background: #fcfaff; font-size: 11px; }
+.wf-message-preview { min-height: 70px !important; }
+.wf-shortfall { color: #aa2538; background: #ffe1e6; border-radius: 4px; padding: 2px 7px; }
+.wf-ack-notice { margin: 0; padding: 9px 11px; border: 1px solid #efdfb8; background: #fff3d4; color: #6f5122; border-radius: 5px; font-size: 11px; line-height: 1.4; }
+.wf-daily-fee { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; margin: 9px 0; }
+.wf-loan-coverage { display: flex; gap: 12px; font-size: 10px; margin-top: 10px; }
+.wf-loan-coverage span { flex: 1; padding: 6px; border: 1px solid #ddd3ec; border-radius: 5px; }
+.wf-loan-coverage b { display: block; margin-top: 3px; }
+.wf-estimated-release { text-align: right; font-weight: 750; font-size: 19px; margin-bottom: 8px; }
+.wf-recall-lifecycle { display: flex; justify-content: space-between; margin: 14px 0 22px; }
+.wf-recall-lifecycle > div { display: flex; flex: 1; flex-direction: column; align-items: center; position: relative; gap: 9px; text-align: center; font-size: 10px; }
+.wf-recall-lifecycle > div::before { content: ''; height: 1px; background: #b9aacb; position: absolute; left: -50%; right: 50%; top: 6px; }
+.wf-recall-lifecycle > div:first-child::before { display: none; }
+.wf-recall-lifecycle span { width: 14px; height: 14px; border: 1px solid #a595b8; border-radius: 50%; background: #fcfaff; z-index: 1; }
+.wf-recall-lifecycle .active { color: #4b23d8; font-weight: 750; }
+.wf-recall-lifecycle .active span { background: #5926e6; border-color: #5926e6; }
+@media(max-width:760px) { .wf-header-actions { margin-left: 0; width: 100%; } }
+.wf-loan .wf-nested-cards { grid-template-columns: .7fr 1.3fr; }
+.wf-loan .wf-nested-cards .wf-table { table-layout: fixed; }
+.wf-loan .wf-nested-cards .wf-table th { font-size: 9px; white-space: normal; padding: 3px 4px; }
+.wf-loan .wf-nested-cards .wf-table td { font-size: 9px; white-space: normal; padding: 3px 4px; overflow-wrap: anywhere; }
+.wf-loan .wf-nested-cards .wf-table th:first-child { width: 20px; }
+.wf-loan .wf-context { gap: 6px 10px; }
+.wf-loan .wf-context > span { gap: 6px; padding-right: 10px; }
+@media(max-width:1200px) { .wf-loan .wf-nested-cards { grid-template-columns: 1fr; } }

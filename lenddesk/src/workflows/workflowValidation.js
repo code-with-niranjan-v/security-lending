@@ -1,3 +1,5 @@
+import { marginProjection,amendmentProjection,recallProjection,addBusinessDaysUtc } from './loanWorkflowCalculations.js'
+
 export const wholePositive = value => Number.isSafeInteger(Number(value)) && Number(value) > 0
 export const allocationTotal = rows => rows.reduce((total,row)=>total+Number(row.quantity||0),0)
 export function allocationErrors(rows,quantity,limits){
@@ -67,6 +69,35 @@ export function workflowErrors(kind,data,context={}){
      if(!wholePositive(data.quantity)||Number(data.quantity)<data.consumed||Number(data.quantity)>data.approved)errors.push('New total must be at least consumed quantity and at most approved locate quantity.')
      errors.push(...allocationErrors(data.allocations,data.quantity,context.sourceAvailability))
    }
+ }
+ if(kind==='margin'){
+   required(['type','amount','currency','issued','deadline','priority','cause','agreement','assignee'])
+   const result=marginProjection(data)
+   if(!Number.isFinite(Number(data.amount))||Number(data.amount)<=0||Number(data.amount)<result.shortfall)errors.push('Requested amount must cover the collateral shortfall.')
+   if(Number(data.amount)>result.selected)errors.push('Requested amount exceeds selected eligible top-up collateral.')
+   if(!data.included.length)errors.push('Include at least one eligible collateral type.')
+   if(!validUtc(data.issued)||!future(data.deadline)||Date.parse(data.deadline+'Z')<=Date.parse(data.issued+'Z'))errors.push('Response deadline must be after issue time and in the future (UTC).')
+   if(!data.recipients.length)errors.push('Select at least one borrower notification recipient.')
+ }
+ if(kind==='loan'){
+   required(['action','maturity','effective','reason'])
+   const result=amendmentProjection(data)
+   if(!validUtc(data.maturity)||!validUtc(data.effective)||Date.parse(data.maturity+'T00:00Z')<=Date.parse(data.effective+'T00:00Z'))errors.push('Loan maturity must be after the effective amendment date (UTC).')
+   if(!validUtc(data.effective)||Date.parse(data.effective+'T00:00Z')<new Date(now).setUTCHours(0,0,0,0))errors.push('Effective amendment cannot be before today (UTC).')
+   if(data.action==='Extend maturity'&&!(result.maturityDelta>0))errors.push('Extended maturity must be later than the current maturity.')
+   if(data.action==='Amend terms'){
+     required(['fee','rebate','billing','dayBasis'])
+     if(!Number.isFinite(result.fee)||!Number.isFinite(result.rebate)||result.fee<0||result.rebate<0)errors.push('Annual fee and rebate must be finite, non-negative rates.')
+   }
+   if(data.outstanding<=0||result.coverage<data.requiredRatio)errors.push('An active outstanding balance and required collateral coverage are needed.')
+ }
+ if(kind==='recall'){
+   required(['type','reason','issued','returnBy','notice','settlement','owner','message'])
+   if(data.type==='Partial')required(['quantity'])
+   const result=recallProjection(data)
+   if(!wholePositive(result.quantity)||result.quantity>data.outstanding)errors.push('Recall quantity must be positive whole shares within the outstanding loan quantity.')
+   if(data.type==='Partial'&&result.quantity>=data.outstanding)errors.push('Use Full recall when recalling the entire outstanding quantity.')
+   if(!validUtc(data.issued)||!future(data.returnBy)||Date.parse(data.returnBy+'Z')<addBusinessDaysUtc(data.issued,parseInt(data.notice,10)||1))errors.push('Return deadline must satisfy the contractual business-day notice and be in the future (UTC).')
  }
  return errors
 }
