@@ -22,6 +22,11 @@ public class LoanValuationCommandListener {
       groupId = "lifecycle-loan-valuation")
   public void receive(String body) throws JsonProcessingException {
     var command = json.readTree(body);
+    if("VALUATION_REQUESTED".equals(command.path("type").asText())){
+      long org=command.path("organizationId").asLong(),request=command.path("referenceId").asLong();
+      if(org<=0||request<=0)throw new IllegalArgumentException("Invalid valuation request IDs");
+      loanValuationService.processRequest(org,request);return;
+    }
     if (!"RUN_LOAN_VALUATION".equals(command.path("type").asText())) return;
 
     long loanId = command.path("data").path("loanId").asLong();

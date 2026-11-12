@@ -1,3 +1,5 @@
+import { useDataSource } from '../hooks/useDataSource'
+import LiveValuationsPage from './LiveValuationsPage'
 import { Fragment, useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import StatusBadge from '../components/StatusBadge'
@@ -5,7 +7,7 @@ import { valuations } from '../data/valuationData'
 
 const tone = (value) => ({ Compliant: 'good', 'Margin call required': 'risk', 'Market Data Service': 'neutral' }[value] ?? 'neutral')
 
-export default function ValuationsPage() {
+function DemoValuationsPage() {
   const { searchTerm } = useOutletContext()
   const [tab, setTab] = useState('Latest valuations')
   const [selectedId, setSelectedId] = useState('VAL-000842')
@@ -18,3 +20,5 @@ export default function ValuationsPage() {
     <section className="valuation-workspace"><article className="panel valuation-register"><div className="panel-title"><h2>Valuation register <small>{rows.length} loan marks shown</small></h2><small>Expand a row to review intraday mark history and coverage impact</small></div><div className="scroll"><table><thead><tr><th /><th>Valuation ID</th><th>Loan ID</th><th>Borrower</th><th>Security</th><th>Quantity</th><th>Previous price</th><th>Current price</th><th>Move</th><th>Loan market value</th><th>Collateral value</th><th>Coverage</th><th>Required</th><th>Margin impact</th><th>Source</th><th>Valued UTC</th><th>Status</th></tr></thead><tbody>{rows.map((valuation) => <Fragment key={valuation.id}><tr className={selectedId === valuation.id ? 'selected' : ''} onClick={() => selectValuation(valuation.id)}><td><button className="row-expander" type="button" aria-label={`${expandedId === valuation.id ? 'Collapse' : 'Expand'} ${valuation.id}`}>{expandedId === valuation.id ? '⌄' : '›'}</button></td><td><a>{valuation.id}</a><small className="table-subline">{valuation.run}</small></td><td><a>{valuation.loan}</a></td><td><strong>{valuation.borrower}</strong></td><td><b>{valuation.symbol}</b></td><td className="num">{valuation.quantity}</td><td className="num">{valuation.previous}</td><td className="num"><b>{valuation.current}</b></td><td className="coverage">{valuation.move}</td><td className="num">{valuation.loanValue}</td><td className="num">{valuation.collateral}</td><td className={valuation.coverage < valuation.required ? 'review-overdue' : 'coverage'}>{valuation.coverage}</td><td>{valuation.required}</td><td className={valuation.impact.startsWith('-') ? 'review-overdue' : 'coverage'}>{valuation.impact}</td><td><StatusBadge tone={tone(valuation.source)}>{valuation.source}</StatusBadge></td><td>{valuation.time}</td><td><StatusBadge tone={tone(valuation.status)}>{valuation.status}</StatusBadge></td></tr>{expandedId === valuation.id && <tr className="child-row"><td colSpan="17"><div className="child-table valuation-child"><div><b>Intraday valuation history · {valuation.loan}</b><span>Current coverage {valuation.coverage} versus required {valuation.required}</span></div><table><thead><tr><th>UTC time</th><th>Market price</th><th>Price move</th><th>Loan market value</th><th>Coverage state</th></tr></thead><tbody>{valuation.history.map((item) => <tr key={item[0]}><td>{item[0]}</td><td className="num"><b>{item[1]}</b></td><td className={item[2].startsWith('-') ? 'review-overdue' : 'coverage'}>{item[2]}</td><td className="num">{item[3]}</td><td><StatusBadge tone={tone(item[4])}>{item[4]}</StatusBadge></td></tr>)}</tbody></table><div className="valuation-actions"><span>Price source <b>{valuation.source}</b> · Current margin impact <b>{valuation.impact}</b></span>{valuation.status !== 'Compliant' && <div><button type="button" className="outline-action">View margin call</button><button type="button" className="primary-action">Issue margin call</button></div>}</div></div></td></tr>}</Fragment>)}</tbody></table></div><footer>Showing {rows.length} of 342 valuations · Market prices are refreshed from the Market Data Service and coverage is evaluated against MSLA terms</footer></article></section>
   </>
 }
+
+export default function ValuationsPage(){const {mode}=useDataSource();return mode==='live'?<LiveValuationsPage/>:<DemoValuationsPage/>}

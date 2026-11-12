@@ -84,6 +84,44 @@ public class LifecycleRequestService {
     return create(loan, "MARGIN_CALL_REQUESTED", r.clientRequestId(), r);
   }
 
+  public LifecycleRequest valuation(long org, long loanId, LifecycleActionRequest request) {
+    tenants.lock(org);
+    var loan = found(loans.findByIdAndOrganizationId(loanId, org));
+    var retry = requests.findByOrganizationIdAndClientRequestId(org, request.clientRequestId());
+    if (retry.isPresent()) {
+      require(
+          "VALUATION_REQUESTED".equals(retry.get().getType())
+              && Objects.equals(retry.get().getLoanId(), loanId),
+          "Client request ID reused for different details");
+      return retry.get();
+    }
+    require(
+        "ACTIVE".equals(loan.getStatus()) && loan.getOutstandingQuantity() > 0,
+        "Valuation requires an active loan with outstanding securities");
+    var pending =
+        requests.findByOrganizationIdAndLoanIdIn(org, List.of(loanId)).stream()
+            .filter(
+                x ->
+                    "VALUATION_REQUESTED".equals(x.getType())
+                        && Set.of("PENDING", "ACCEPTED").contains(x.getStatus()))
+            .findFirst();
+    if (pending.isPresent()) return pending.get();
+    return create(loan, "VALUATION_REQUESTED", request.clientRequestId(), request);
+  }
+
+  public List<LifecycleRequest> valuationBatch(long org, ValuationBatchRequest request) {
+    tenants.lock(org);
+    require(
+        new HashSet<>(request.loanIds()).size() == request.loanIds().size(),
+        "Duplicate loan IDs in batch");
+    return request.loanIds().stream()
+        .map(
+            id ->
+                valuation(
+                    org, id, new LifecycleActionRequest(request.clientRequestId() + ":" + id)))
+        .toList();
+  }
+
   public LifecycleRequest rebatePayment(long org, long id, LifecycleActionRequest r) {
     tenants.lock(org);
     var rebate = found(rebates.findByIdAndOrganizationId(id, org));

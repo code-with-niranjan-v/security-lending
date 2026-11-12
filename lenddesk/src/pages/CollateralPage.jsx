@@ -1,3 +1,5 @@
+import { useDataSource } from '../hooks/useDataSource'
+import LiveCollateralPage from './LiveCollateralPage'
 import { Fragment, useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import { designCollateral, collateralValuations, collateralMovements } from '../data/designCollateral'
@@ -14,7 +16,7 @@ function CollateralDetails({ row }) {
   return <div className="ref-collateral-details"><ReferenceTable title="⌁  Daily Valuation History" headers={['Valuation Date (UTC)', 'Price', 'Market Value', 'Haircut', 'Adjusted Value', 'Required Value', 'Collateral Ratio']} rows={collateralValuations}/><ReferenceTable title="▣  Collateral Movement / Settlement History" headers={['Event Time (UTC)', 'Event', 'Details', 'Pledged qty', 'Pledged qty (After)', 'Settlement State']} rows={collateralMovements.map(([time, event, details, qty, after, state]) => [time, <><span className="ref-event-icon">{event === 'Settlement' ? '⊙' : '⇄'}</span>{event}</>, details, qty, after, <Badge>{state}</Badge>])}/></div>
 }
 
-export default function CollateralPage() {
+function DemoCollateralPage() {
   const { searchTerm = '' } = useOutletContext()
   const [expanded, setExpanded] = useState('COL-006-001')
   const [draft, setDraft] = useState(allFilters)
@@ -26,3 +28,5 @@ export default function CollateralPage() {
     <div className="ref-scroll"><table className="ref-main-table ref-collateral-table"><thead><tr><th aria-label="Expand collateral"/>{columns.map(([key, label]) => sortHeading(key, label))}</tr></thead><tbody>{sorted.map(row => <Fragment key={row.id}><tr className={expanded === row.id ? 'ref-selected' : ''}><td><button className="ref-expander" aria-label={`${expanded === row.id ? 'Collapse' : 'Expand'} ${row.id}`} aria-expanded={expanded === row.id} onClick={() => setExpanded(current => current === row.id ? null : row.id)}>{expanded === row.id ? '⌄' : '›'}</button></td><td><button className="ref-id" onClick={() => setExpanded(current => current === row.id ? null : row.id)}>{row.id}</button></td><td><Link to={`/loans/${row.loan}`}>{row.loan}</Link></td><td>{row.borrower}</td><td>{row.type}</td><td>{row.security}</td><td className="ref-num">{row.quantity.toLocaleString('en-US')}</td><td className="ref-num">{money(row.price, row.type === 'Cash' ? 4 : 2)}</td><td className="ref-num">{money(row.marketValue)}</td><td className="ref-num">{row.haircut.toFixed(1)}%</td><td className="ref-num">{money(row.adjusted)}</td><td className="ref-num">{money(row.required)}</td><td className="ref-num">{row.ratio < 100 ? <Badge tone={row.ratio < 95 ? 'risk' : 'warn'}>⚠ {row.ratio.toFixed(1)}%</Badge> : `${row.ratio.toFixed(1)}%`}</td><td><Badge tone={row.settlement === 'Pending' ? 'purple' : 'good'}>{row.settlement}</Badge></td><td>{row.valuation}</td></tr>{expanded === row.id && <tr className="ref-child"><td colSpan={15}><CollateralDetails row={row}/></td></tr>}</Fragment>)}{sorted.length === 0 && <tr><td colSpan={15} className="ref-empty">No collateral positions match your filters.</td></tr>}</tbody></table></div>
   </section>
 }
+
+export default function CollateralPage(){const {mode}=useDataSource();return mode==='live'?<LiveCollateralPage/>:<DemoCollateralPage/>}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import { lenderGet } from '../api/lendDeskApi'
 import { useDataSource } from '../hooks/useDataSource'
+import RunValuationButton from '../components/loans/RunValuationButton'
 import { useReferenceSort } from '../hooks/useReferenceSort'
 import { LoanBadge, LoanCard } from '../components/loans/LoanCards'
 import {
@@ -287,8 +288,12 @@ export default function LiveLoansPage() {
                         'Request pending'
                       ) : l.shortfall > 0 ? (
                         'Shortfall'
+                      ) : l.status !== 'ACTIVE' ? (
+                        'Not applicable'
+                      ) : l.shortfall == null ? (
+                        'Not valued'
                       ) : (
-                        '—'
+                        'Clear'
                       )}
                     </td>
                     <td>
@@ -331,7 +336,7 @@ export default function LiveLoansPage() {
   )
 }
 export function LiveLoanDetails({ id }) {
-  const { organizationId, refreshKey } = useDataSource(),
+  const { organizationId, refreshKey, refresh } = useDataSource(),
     [state, setState] = useState({ scope: '', data: null, error: '' }),
     scope = `${organizationId}:${refreshKey}:${id}`
   useEffect(() => {
@@ -364,6 +369,14 @@ export function LiveLoanDetails({ id }) {
           {loanId(id)} / {l.symbol} <LoanBadge>{display(l.status)}</LoanBadge>
         </h2>
         <div>
+          {l.canRunValuation && (
+            <RunValuationButton
+              key={`${organizationId}:${id}:${l.pendingValuationRunId ?? 0}`}
+              loanIds={[id]}
+              pendingRunId={l.pendingValuationRunId}
+              onFinished={refresh}
+            />
+          )}
           <Link className="ref-primary" to={`/loans/${loanId(id)}/manage`}>
             Manage loan
           </Link>

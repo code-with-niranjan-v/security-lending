@@ -16,6 +16,7 @@ public class FeeSecurity {
 
   private String symbol;
   private String exchange;
+  private String currency;
   private BigDecimal price;
 
   @Column(name = "price_at")

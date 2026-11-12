@@ -1,0 +1,55 @@
+.valuation-run {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: flex-start;
+  max-width: 420px;
+  white-space: normal;
+}
+.valuation-run button {
+  white-space: nowrap;
+}
+.valuation-notice,
+.valuation-error {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.valuation-notice {
+  color: #35316b;
+}
+.valuation-error {
+  color: #a01d34;
+}
+.live-valuations .al-table td {
+  vertical-align: top;
+}
+.live-valuations .al-heading {
+  margin-bottom: 12px;
+}
+.live-collateral .al-detail {
+  overflow: auto;
+}
+@media (max-width: 760px) {
+  .workspace:has(.live-valuations, .live-collateral) .topbar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 63px;
+    padding-block: 8px;
+  }
+  .workspace:has(.live-valuations, .live-collateral) .topbar .search {
+    order: 2;
+    flex-basis: 100%;
+    max-width: none;
+  }
+  .valuation-run {
+    max-width: 100%;
+  }
+}
+.live-valuations > .al-table-scroll > .al-table th:last-child,
+.live-valuations > .al-table-scroll > .al-table td:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: #f8f5ff;
+  box-shadow: -3px 0 6px #e6dfff;
+}

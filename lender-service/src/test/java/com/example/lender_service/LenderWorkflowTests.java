@@ -39,6 +39,8 @@ class LenderWorkflowTests {
   @Autowired LifecycleEventService lifecycle;
   @Autowired ReadService read;
   @Autowired LoanScreenService loanScreen;
+  @Autowired ValuationScreenService valuationScreens;
+  @Autowired CollateralScreenService collateralScreens;
   @Autowired OutboxService outbox;
   @Autowired JsonService json;
   @Autowired OrganizationRepository organizations;
@@ -178,6 +180,124 @@ class LenderWorkflowTests {
   }
 
   @Test
+  void valuationRequestsAreTenantScopedIdempotentAndExposeFailures() throws Exception {
+    var o = organization();
+    var c = connection(o);
+    long sec = security("100");
+    var l = activeLoan(o, c, sec, true);
+    var request =
+        lifecycleRequests.valuation(o.getId(), l.getId(), new LifecycleActionRequest("run-one"));
+    assertEquals(
+        request.getId(),
+        lifecycleRequests
+            .valuation(o.getId(), l.getId(), new LifecycleActionRequest("run-one"))
+            .getId());
+    assertEquals(
+        request.getId(),
+        lifecycleRequests
+            .valuation(o.getId(), l.getId(), new LifecycleActionRequest("run-another-key"))
+            .getId());
+    assertEquals("PENDING", request.getStatus());
+    lifecycle(
+        o,
+        "LIFECYCLE_REQUEST_REJECTED",
+        request.getId(),
+        1,
+        Map.of("reason", "Missing cached price for security 42"));
+    assertEquals(
+        "Missing cached price for security 42",
+        valuationScreens.run(o.getId(), request.getId()).get("failureReason"));
+    assertEquals(
+        request.getId(),
+        lifecycleRequests
+            .valuation(o.getId(), l.getId(), new LifecycleActionRequest("run-one"))
+            .getId());
+    var next =
+        lifecycleRequests.valuation(o.getId(), l.getId(), new LifecycleActionRequest("run-two"));
+    lifecycle(
+        o,
+        "VALUATION_REPORTED",
+        8800000L,
+        1,
+        Map.of(
+            "loanId",
+            l.getId(),
+            "lifecycleRequestId",
+            next.getId(),
+            "loanMarketValue",
+            "10000",
+            "requiredCollateral",
+            "10500",
+            "recognizedCollateral",
+            "11000",
+            "coverageRatio",
+            "1.1",
+            "shortfall",
+            "0",
+            "status",
+            "SUFFICIENT"));
+    assertEquals("COMPLETED", next.getStatus());
+    var other = organization();
+    mvc.perform(get("/api/v1/organizations/" + other.getId() + "/valuation-runs/" + next.getId()))
+        .andExpect(status().isNotFound());
+    mvc.perform(
+            get(
+                "/api/v1/organizations/"
+                    + o.getId()
+                    + "/lenddesk/valuations/loans/"
+                    + l.getId()
+                    + "/screen"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.history.totalElements").value(1));
+    mvc.perform(
+            post("/api/v1/organizations/" + o.getId() + "/valuation-runs")
+                .contentType("application/json")
+                .content("{\"loanIds\":[],\"clientRequestId\":\"empty\"}"))
+        .andExpect(status().isBadRequest());
+    l.setStatus("CLOSED");
+    l.setOutstandingQuantity(0L);
+    assertThrows(
+        ResponseStatusException.class,
+        () ->
+            lifecycleRequests.valuation(
+                o.getId(), l.getId(), new LifecycleActionRequest("closed")));
+  }
+
+  @Test
+  void collateralReadsUseActualConfirmedValuesAndRecordedMovements() throws Exception {
+    var o = organization();
+    var c = connection(o);
+    long sec = security("100");
+    var l = activeLoan(o, c, sec, true);
+    var position = positions.findByLoanId(l.getId()).get(0);
+    var d = collateralScreens.detail(o.getId(), position.getId());
+    var row = (Map<?, ?>) d.get("position");
+    assertEquals(0, bd("11000").compareTo((BigDecimal) row.get("eligibleValue")));
+    assertEquals(true, row.get("includedInCoverage"));
+    assertFalse(((List<?>) d.get("movements")).isEmpty());
+    assertTrue(((List<?>) d.get("valuations")).isEmpty());
+    var root = "/api/v1/organizations/" + o.getId() + "/collateral";
+    mvc.perform(get(root + "/overview").param("status", "POSTED"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.positions.totalElements").value(1))
+        .andExpect(jsonPath("$.data.totals[0].eligibleValue").value(11000));
+    mvc.perform(get(root + "/overview").param("status", "INVALID"))
+        .andExpect(status().isBadRequest());
+    var other = organization();
+    mvc.perform(
+            get(
+                "/api/v1/organizations/"
+                    + other.getId()
+                    + "/collateral/"
+                    + position.getId()
+                    + "/screen"))
+        .andExpect(status().isNotFound());
+    position.setStatus("RELEASED");
+    row = (Map<?, ?>) collateralScreens.detail(o.getId(), position.getId()).get("position");
+    assertEquals(false, row.get("includedInCoverage"));
+  }
+
+  @Test
   void liveLoanRegisterHasNoFabricatedValuationsAndIsTenantScoped() throws Exception {
     var org = organization();
     var c = connection(org);
@@ -191,7 +311,8 @@ class LenderWorkflowTests {
         .andExpect(jsonPath("$.data.loans.content[0].coverageStatus").value("UNKNOWN"))
         .andExpect(jsonPath("$.data.loans.content[0].marketValue").isEmpty())
         .andExpect(jsonPath("$.data.loans.content[0].maturity").isEmpty())
-        .andExpect(jsonPath("$.data.totals[0].missingValuations").value(1));
+        .andExpect(jsonPath("$.data.totals[0].missingValuations").value(1))
+      .andExpect(jsonPath("$.data.totals[0].marketValue").isEmpty());
     mvc.perform(get(root + "/overview").param("coverage", "UNKNOWN"))
         .andExpect(jsonPath("$.data.loans.totalElements").value(1));
     mvc.perform(get(root + "/overview").param("size", "201")).andExpect(status().isBadRequest());

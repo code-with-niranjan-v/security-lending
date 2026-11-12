@@ -2,198 +2,297 @@ package com.example.lifecycle_service.service;
 
 import com.example.lifecycle_service.model.*;
 import com.example.lifecycle_service.repository.*;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
+import java.math.*;
 import java.time.Instant;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import lombok.RequiredArgsConstructor;
-import org.apache.kafka.clients.producer.ProducerRecord;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+/** Valuation owner: quoted security prices and confirmed positions, with a durable report. */
 @Service
 @RequiredArgsConstructor
 public class LoanValuationService {
   private final LoanRepository loanRepository;
   private final MslaRepository mslaRepository;
-  private final FeeSecurityRepository feeSecurityRepository;
-  private final CollateralPositionRepository collateralPositionRepository;
-  private final LoanValuationRepository loanValuationRepository;
-  private final KafkaTemplate<String, String> kafkaTemplate;
-  private final ObjectMapper objectMapper;
+  private final FeeSecurityRepository securities;
+  private final CollateralPositionRepository positions;
+  private final LoanValuationRepository valuations;
+  private final LenderOutboxEventRepository outbox;
+  private final RecallRequestRecordRepository requests;
+  private final ObjectMapper json;
 
   @Value("${lifecycle.lender-commands-topic:lender.lifecycle.commands.v1}")
-  private String lenderCommandsTopic;
+  private String commandTopic;
 
   @Value("${lifecycle.lender-events-topic:lender.lifecycle.events.v1}")
-  private String lenderEventsTopic;
+  private String eventTopic;
+
+  private static BigDecimal amount(BigDecimal value) {
+    return value.setScale(6, RoundingMode.HALF_UP);
+  }
+
+  private void require(boolean ok, String reason) {
+    if (!ok) throw new ResponseStatusException(HttpStatus.CONFLICT, reason);
+  }
+
+  private Loan lockLoan(long loanId) {
+    long org =
+        loanRepository
+            .findOrganizationId(loanId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Loan not found"));
+    require(loanRepository.lockOrganization(org) != null, "Organization not found");
+    return loanRepository.findByIdAndOrganizationId(loanId, org).orElseThrow();
+  }
+
+  private FeeSecurity quote(long id) {
+    var s =
+        securities
+            .findById(id)
+            .orElseThrow(
+                () -> new ResponseStatusException(HttpStatus.CONFLICT, "Missing security " + id));
+    require(
+        s.getPrice() != null
+            && s.getPrice().signum() > 0
+            && s.getPriceAt() != null
+            && !s.getPriceAt().isAfter(Instant.now()),
+        "Missing or invalid cached price for security " + id);
+    return s;
+  }
 
   @Transactional
   public LoanValuation runValuationForLoan(long loanId) {
-    var loan =
-        loanRepository
-            .findById(loanId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Loan not found: " + loanId));
-    var msla =
-        mslaRepository
-            .findById(loan.getMslaId())
-            .orElseThrow(
-                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "MSLA not found: " + loan.getMslaId()));
-
-    BigDecimal marketValue = resolveLoanMarketValue(loan);
-    BigDecimal recognizedCollateral = resolveRecognizedCollateral(loanId, marketValue);
-    BigDecimal requiredCollateral = marketValue.multiply(safeZero(msla.getCoverageRatio()));
-    BigDecimal coverageRatio =
-        marketValue.signum() > 0 ? recognizedCollateral.divide(marketValue, 8, RoundingMode.HALF_UP) : BigDecimal.ZERO;
-    BigDecimal shortfall = requiredCollateral.subtract(recognizedCollateral).max(BigDecimal.ZERO);
-
-    var valuation = new LoanValuation();
-    valuation.setOrganizationId(loan.getOrganizationId());
-    valuation.setConnectionId(loan.getConnectionId());
-    valuation.setLoanId(loan.getId());
-    valuation.setOwnerReferenceId(loan.getId());
-    valuation.setStatus("REPORTED");
-    valuation.setCreatedAt(Instant.now());
-    valuation.setValuedAt(Instant.now());
-    valuation.setSourceVersion(nextSourceVersion(loanId));
-    valuation.setSourceData("{\"type\":\"RUN_LOAN_VALUATION\"}");
-    valuation.setLoanMarketValue(marketValue.setScale(6, RoundingMode.HALF_UP));
-    valuation.setRequiredCollateral(requiredCollateral.setScale(6, RoundingMode.HALF_UP));
-    valuation.setRecognizedCollateral(recognizedCollateral.setScale(6, RoundingMode.HALF_UP));
-    valuation.setCoverageRatio(coverageRatio.setScale(6, RoundingMode.HALF_UP));
-    valuation.setShortfall(shortfall.setScale(6, RoundingMode.HALF_UP));
-
-    valuation = loanValuationRepository.save(valuation);
-    publishValuationEvent(valuation);
-    return valuation;
+    return calculate(lockLoan(loanId), null, null);
   }
 
   @Transactional(readOnly = true)
-  public LoanValuation latestForLoan(long loanId) {
-    return loanValuationRepository
-        .findFirstByLoanIdOrderByValuedAtDescIdDesc(loanId)
+  public LoanValuation latestForLoan(long id) {
+    return valuations
+        .findFirstByLoanIdOrderByValuedAtDescIdDesc(id)
         .orElseThrow(
-            () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No valuation found for loan: " + loanId));
+            () ->
+                new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "No valuation found for loan " + id));
   }
 
   @Transactional
   public void requestValuationRun(long loanId) {
-    var loan =
-        loanRepository
-            .findById(loanId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Loan not found: " + loanId));
-    publishCommand(
+    var loan = lockLoan(loanId);
+    enqueue(
         loan.getOrganizationId(),
         loanId,
         "RUN_LOAN_VALUATION",
-        Map.of("loanId", loanId));
+        UUID.randomUUID().toString(),
+        1,
+        Map.of("loanId", loanId),
+        commandTopic);
   }
 
   @Transactional
   public void handleRunValuationCommand(long loanId) {
-    runValuationForLoan(loanId);
+    calculate(lockLoan(loanId), null, null);
   }
 
-  private BigDecimal resolveLoanMarketValue(Loan loan) {
-    long quantity = loan.getOutstandingQuantity() != null ? loan.getOutstandingQuantity() : 0L;
-    if (quantity <= 0) return BigDecimal.ZERO;
-
-    var security =
-        feeSecurityRepository
-            .findById(loan.getSecurityId())
-            .orElseThrow(
-                () ->
-                    new ResponseStatusException(
-                        HttpStatus.CONFLICT, "Loan security is not loaded in lifecycle market data: " + loan.getSecurityId()));
-    BigDecimal price = safeZero(security.getPrice());
-    return price.multiply(BigDecimal.valueOf(quantity)).setScale(6, RoundingMode.HALF_UP);
-  }
-
-  private BigDecimal resolveRecognizedCollateral(long loanId, BigDecimal marketValue) {
-    List<CollateralPosition> positions = collateralPositionRepository.findByLoanId(loanId);
-    BigDecimal recognized = BigDecimal.ZERO;
-    for (var position : positions) {
-      if (!"POSTED".equalsIgnoreCase(position.getStatus())) {
-        continue;
-      }
-      if ("CASH".equalsIgnoreCase(position.getAssetType())) {
-        recognized = recognized.add(safeZero(position.getCashAmount()));
-      } else if (position.getSecurityId() != null && position.getQuantity() != null && position.getQuantity() > 0) {
-        long positionQuantity = position.getQuantity();
-        long valuationQuantity = Math.max(positionQuantity, 1L);
-        BigDecimal unitPrice = BigDecimal.ZERO;
-        if (marketValue.signum() > 0) {
-          unitPrice =
-              marketValue.divide(BigDecimal.valueOf(valuationQuantity), 8, RoundingMode.HALF_UP);
-        }
-        BigDecimal haircut = safeZero(position.getHaircut());
-        BigDecimal valuation =
-            unitPrice.multiply(BigDecimal.valueOf(positionQuantity))
-                .multiply(BigDecimal.ONE.subtract(haircut));
-        recognized = recognized.add(valuation);
-      }
-    }
-    return recognized.setScale(6, RoundingMode.HALF_UP);
-  }
-
-  private void publishCommand(long organizationId, long referenceId, String type, Map<String, Object> data) {
+  @Transactional
+  public void processRequest(long org, long requestId) {
+    require(loanRepository.lockOrganization(org) != null, "Unknown organization");
+    var request = requests.findByIdAndOrganizationId(requestId, org).orElseThrow();
+    require("VALUATION_REQUESTED".equals(request.getType()), "Not a valuation request");
+    String eventId = "valuation-run-" + requestId;
+    if (!Set.of("PENDING", "ACCEPTED").contains(request.getStatus())
+        || outbox.existsByEventId(eventId)) return;
+    var loan = loanRepository.findByIdAndOrganizationId(request.getLoanId(), org).orElse(null);
     try {
-      var payloadMap = new LinkedHashMap<String, Object>();
-      payloadMap.put("eventId", UUID.randomUUID().toString());
-      payloadMap.put("type", type);
-      payloadMap.put("organizationId", organizationId);
-      payloadMap.put("referenceId", referenceId);
-      payloadMap.put("occurredAt", Instant.now());
-      payloadMap.put("data", data);
-
-      String payload = objectMapper.writeValueAsString(payloadMap);
-      kafkaTemplate.send(new ProducerRecord<>(lenderCommandsTopic, String.valueOf(organizationId), payload));
-    } catch (Exception ex) {
-      throw new IllegalStateException("Failed to publish lifecycle valuation command", ex);
+      require(
+          loan != null && Objects.equals(loan.getConnectionId(), request.getConnectionId()),
+          "Loan no longer belongs to this request");
+      calculate(loan, requestId, eventId);
+    } catch (ResponseStatusException e) {
+      enqueue(
+          org,
+          requestId,
+          "LIFECYCLE_REQUEST_REJECTED",
+          eventId,
+          1,
+          Map.of(
+              "reason",
+              Objects.requireNonNullElse(e.getReason(), "Valuation could not be calculated")),
+          eventTopic);
     }
   }
 
-  private void publishValuationEvent(LoanValuation valuation) {
+  private LoanValuation calculate(Loan loan, Long requestId, String fixedEventId) {
+    require(
+        "ACTIVE".equals(loan.getStatus()) && loan.getOutstandingQuantity() > 0,
+        "Valuation requires an active loan with outstanding securities");
+    var agreement = mslaRepository.findById(loan.getMslaId()).orElseThrow();
+    require(
+        agreement.getOrganizationId().equals(loan.getOrganizationId())
+            && agreement.getCoverageRatio() != null
+            && agreement.getCoverageRatio().signum() > 0,
+        "Invalid loan agreement");
+    var security = quote(loan.getSecurityId());
+    BigDecimal
+        market =
+            amount(security.getPrice().multiply(BigDecimal.valueOf(loan.getOutstandingQuantity()))),
+        recognized = BigDecimal.ZERO;
+    var marks = new ArrayList<Map<String, Object>>();
+    for (var p : positions.findByLoanId(loan.getId())) {
+      if (!Set.of("POSTED", "RELEASE_REQUESTED").contains(p.getStatus())) continue;
+      require(
+          p.getOrganizationId().equals(loan.getOrganizationId())
+              && p.getConnectionId().equals(loan.getConnectionId()),
+          "Collateral does not belong to this loan");
+      require(
+          p.getHaircut() != null
+              && p.getHaircut().signum() >= 0
+              && p.getHaircut().compareTo(BigDecimal.ONE) <= 0,
+          "Invalid collateral haircut");
+      BigDecimal price, value;
+      Instant priceAt;
+      String symbol;
+      if ("CASH".equals(p.getAssetType())) {
+        require(
+            p.getCashAmount() != null && p.getCashAmount().signum() >= 0,
+            "Invalid cash collateral");
+        price = BigDecimal.ONE;
+        value = p.getCashAmount();
+        priceAt = Instant.now();
+        symbol = "Cash";
+      } else {
+        require(
+            p.getSecurityId() != null && p.getQuantity() != null && p.getQuantity() >= 0,
+            "Invalid security collateral");
+        var collateralSecurity = quote(p.getSecurityId());
+        require(
+            Objects.equals(security.getCurrency(), collateralSecurity.getCurrency()),
+            "Collateral requires currency conversion that is not configured");
+        price = collateralSecurity.getPrice();
+        priceAt = collateralSecurity.getPriceAt();
+        symbol = collateralSecurity.getSymbol();
+        value = price.multiply(BigDecimal.valueOf(p.getQuantity()));
+      }
+      BigDecimal eligible = amount(value.multiply(BigDecimal.ONE.subtract(p.getHaircut())));
+      recognized = recognized.add(eligible);
+      marks.add(
+          Map.of(
+              "positionId",
+              p.getId(),
+              "assetType",
+              p.getAssetType(),
+              "symbol",
+              symbol,
+              "price",
+              price,
+              "priceAt",
+              priceAt.toString(),
+              "marketValue",
+              amount(value),
+              "haircut",
+              p.getHaircut(),
+              "recognizedValue",
+              eligible,
+              "status",
+              p.getStatus()));
+    }
+    BigDecimal required = amount(market.multiply(agreement.getCoverageRatio())),
+        shortfall = required.subtract(recognized).max(BigDecimal.ZERO),
+        ratio = recognized.divide(market, 6, RoundingMode.HALF_UP);
+    Instant now = Instant.now();
+    long version =
+        valuations
+            .findFirstByLoanIdOrderByValuedAtDescIdDesc(loan.getId())
+            .map(v -> v.getSourceVersion() + 1)
+            .orElse(1L);
+    long reference;
+    do {
+      reference = (UUID.randomUUID().getLeastSignificantBits() & Long.MAX_VALUE) | (1L << 62);
+    } while (valuations.existsByOrganizationIdAndOwnerReferenceId(
+        loan.getOrganizationId(), reference));
+    var data = new LinkedHashMap<String, Object>();
+    data.put("loanId", loan.getId());
+    data.put("loanMarketValue", market);
+    data.put("requiredCollateral", required);
+    data.put("recognizedCollateral", recognized);
+    data.put("coverageRatio", ratio);
+    data.put("shortfall", shortfall);
+    data.put("status", shortfall.signum() > 0 ? "SHORTFALL" : "SUFFICIENT");
+    data.put("price", security.getPrice());
+    data.put("priceAt", security.getPriceAt().toString());
+    data.put("quantity", loan.getOutstandingQuantity());
+    data.put("currency", security.getCurrency());
+    data.put("collateral", marks);
+    if (requestId != null) data.put("lifecycleRequestId", requestId);
+    var v = new LoanValuation();
+    v.setOrganizationId(loan.getOrganizationId());
+    v.setConnectionId(loan.getConnectionId());
+    v.setLoanId(loan.getId());
+    v.setOwnerReferenceId(reference);
+    v.setSourceVersion(version);
+    v.setSourceData(write(data));
+    v.setStatus((String) data.get("status"));
+    v.setCreatedAt(now);
+    v.setValuedAt(now);
+    v.setLoanMarketValue(market);
+    v.setRequiredCollateral(required);
+    v.setRecognizedCollateral(amount(recognized));
+    v.setCoverageRatio(ratio);
+    v.setShortfall(amount(shortfall));
+    valuations.save(v);
+    enqueue(
+        loan.getOrganizationId(),
+        reference,
+        "VALUATION_REPORTED",
+        fixedEventId == null ? UUID.randomUUID().toString() : fixedEventId,
+        version,
+        data,
+        eventTopic);
+    return v;
+  }
+
+  private String write(Object data) {
     try {
-      var data = new LinkedHashMap<String, Object>();
-      data.put("loanId", valuation.getLoanId());
-      data.put("loanMarketValue", valuation.getLoanMarketValue());
-      data.put("requiredCollateral", valuation.getRequiredCollateral());
-      data.put("recognizedCollateral", valuation.getRecognizedCollateral());
-      data.put("coverageRatio", valuation.getCoverageRatio());
-      data.put("shortfall", valuation.getShortfall());
-
-      var payloadMap = new LinkedHashMap<String, Object>();
-      payloadMap.put("eventId", UUID.randomUUID().toString());
-      payloadMap.put("type", "VALUATION_REPORTED");
-      payloadMap.put("organizationId", valuation.getOrganizationId());
-      payloadMap.put("referenceId", valuation.getId() != null ? valuation.getId() : valuation.getOwnerReferenceId());
-      payloadMap.put("version", valuation.getSourceVersion());
-      payloadMap.put("occurredAt", valuation.getValuedAt());
-      payloadMap.put("data", data);
-
-      String payload = objectMapper.writeValueAsString(payloadMap);
-      kafkaTemplate.send(new ProducerRecord<>(lenderEventsTopic, String.valueOf(valuation.getOrganizationId()), payload));
-    } catch (Exception ex) {
-      throw new IllegalStateException("Failed to publish valuation event", ex);
+      return json.writeValueAsString(data);
+    } catch (JsonProcessingException e) {
+      throw new IllegalStateException(e);
     }
   }
 
-  private long nextSourceVersion(long loanId) {
-    return loanValuationRepository.findFirstByLoanIdOrderByValuedAtDescIdDesc(loanId)
-        .map(existing -> existing.getSourceVersion() + 1L)
-        .orElse(1L);
-  }
-
-  private BigDecimal safeZero(BigDecimal value) {
-    return value == null ? BigDecimal.ZERO : value;
+  private void enqueue(
+      long org,
+      long reference,
+      String type,
+      String eventId,
+      long version,
+      Object data,
+      String topic) {
+    Instant now = Instant.now();
+    outbox.save(
+        new LenderOutboxEvent(
+            org,
+            eventId,
+            topic,
+            write(
+                Map.of(
+                    "eventId",
+                    eventId,
+                    "organizationId",
+                    org,
+                    "referenceId",
+                    reference,
+                    "type",
+                    type,
+                    "version",
+                    version,
+                    "occurredAt",
+                    now.toString(),
+                    "data",
+                    data)),
+            now));
   }
 }

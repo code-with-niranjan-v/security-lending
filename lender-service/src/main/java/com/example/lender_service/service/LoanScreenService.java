@@ -123,6 +123,16 @@ public class LoanScreenService {
       if (row.get("marketValue") == null || row.get("eligibleCollateral") == null)
         total.put("missingValuations", (int) total.get("missingValuations") + 1);
     }
+    for (var total : totals.values()) {
+      long members =
+          active.stream()
+              .filter(x -> Objects.equals(x.get("currency"), total.get("currency")))
+              .count();
+      if (members == (int) total.get("missingValuations")) {
+        total.put("marketValue", null);
+        total.put("eligibleCollateral", null);
+      }
+    }
     return map(
         "loans",
         new PageResponse<>(
@@ -321,6 +331,27 @@ public class LoanScreenService {
                       && !pendingMargin,
                   "pendingMarginRequest",
                   pendingMargin,
+                  "valuationId",
+                  v == null ? null : v.getId(),
+                  "pendingValuationRunId",
+                  qq.stream()
+                      .filter(
+                          x ->
+                              x.getLoanId().equals(l.getId())
+                                  && "VALUATION_REQUESTED".equals(x.getType())
+                                  && Set.of("PENDING", "ACCEPTED").contains(x.getStatus()))
+                      .map(LifecycleRequest::getId)
+                      .findFirst()
+                      .orElse(null),
+                  "valuationRunPending",
+                  qq.stream()
+                      .anyMatch(
+                          x ->
+                              x.getLoanId().equals(l.getId())
+                                  && "VALUATION_REQUESTED".equals(x.getType())
+                                  && Set.of("PENDING", "ACCEPTED").contains(x.getStatus())),
+                  "canRunValuation",
+                  "ACTIVE".equals(l.getStatus()) && l.getOutstandingQuantity() > 0,
                   "valuationAt",
                   v == null ? null : v.getValuedAt());
             })

@@ -6,6 +6,7 @@ import org.springframework.data.domain.*;
 import org.springframework.data.jpa.repository.*;
 
 public interface CollateralHistoryRepository extends JpaRepository<CollateralHistory, Long> {
+  List<CollateralHistory> findByOrganizationIdAndPositionIdOrderByCreatedAtDescIdDesc(Long organizationId,Long positionId);
   Page<CollateralHistory> findByOrganizationId(Long organizationId, Pageable pageable);
 
   Optional<CollateralHistory> findByIdAndOrganizationId(Long id, Long organizationId);

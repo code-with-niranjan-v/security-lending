@@ -6,6 +6,7 @@ import org.springframework.data.domain.*;
 import org.springframework.data.jpa.repository.*;
 
 public interface LoanValuationRepository extends JpaRepository<LoanValuation, Long> {
+  Page<LoanValuation> findByOrganizationIdAndLoanIdOrderByValuedAtDescIdDesc(Long organizationId,Long loanId,Pageable pageable);
   Optional<LoanValuation> findFirstByLoanIdOrderByValuedAtDescIdDesc(Long loanId);
 
   Page<LoanValuation> findByOrganizationId(Long organizationId, Pageable pageable);

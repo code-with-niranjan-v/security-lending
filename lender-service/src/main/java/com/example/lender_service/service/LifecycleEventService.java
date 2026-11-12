@@ -110,6 +110,11 @@ public class LifecycleEventService {
             Set.of("PENDING", "ACCEPTED").contains(r.getStatus()),
             "Lifecycle request already completed");
         r.setStatus(e.type().endsWith("ACCEPTED") ? "ACCEPTED" : "REJECTED");
+        if ("VALUATION_REQUESTED".equals(r.getType()) && e.type().endsWith("REJECTED")) {
+          var payload = new LinkedHashMap<>(json.map(json.tree(r.getPayload())));
+          payload.put("failureReason", text(e.data(), "reason"));
+          r.setPayload(json.write(payload));
+        }
       }
       case "LOAN_STATUS_UPDATED" -> {
         var l = found(loans.findByIdAndOrganizationId(e.referenceId(), e.organizationId()));
@@ -177,6 +182,18 @@ public class LifecycleEventService {
     String resource = e.type();
     switch (e.type()) {
       case "VALUATION_REPORTED" -> {
+        if (d.hasNonNull("lifecycleRequestId")) {
+          var request =
+              found(
+                  requests.findByIdAndOrganizationId(
+                      number(d, "lifecycleRequestId"), e.organizationId()));
+          require(
+              "VALUATION_REQUESTED".equals(request.getType())
+                  && Objects.equals(request.getLoanId(), loan.getId())
+                  && Objects.equals(request.getConnectionId(), loan.getConnectionId()),
+              "Valuation request does not match loan");
+          if (!Set.of("PENDING", "ACCEPTED").contains(request.getStatus())) return;
+        }
         var p =
             view(
                 e,
@@ -184,7 +201,19 @@ public class LifecycleEventService {
                 valuations.findByOrganizationIdAndOwnerReferenceId(
                     e.organizationId(), e.referenceId()),
                 LoanValuation::new);
-        if (p == null) return;
+        if (p == null) {
+          if (!d.hasNonNull("lifecycleRequestId")) return;
+          var persisted =
+              found(
+                  valuations.findByOrganizationIdAndOwnerReferenceId(
+                      e.organizationId(), e.referenceId()));
+          require(
+              persisted.getSourceVersion().equals(e.version())
+                  && json.tree(persisted.getSourceData()).equals(d),
+              "Stored valuation does not match owner report");
+          completeRequest(e, loan);
+          break;
+        }
         p.setLoanMarketValue(decimal(d, "loanMarketValue"));
         p.setRequiredCollateral(decimal(d, "requiredCollateral"));
         p.setRecognizedCollateral(decimal(d, "recognizedCollateral"));
@@ -192,6 +221,7 @@ public class LifecycleEventService {
         p.setShortfall(decimal(d, "shortfall"));
         p.setValuedAt(e.occurredAt());
         valuations.save(p);
+        completeRequest(e, loan);
       }
       case "MARGIN_CALL_UPDATED" -> {
         if(d.hasNonNull("lifecycleRequestId")){
