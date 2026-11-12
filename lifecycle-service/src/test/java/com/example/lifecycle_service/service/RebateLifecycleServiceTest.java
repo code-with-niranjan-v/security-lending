@@ -117,14 +117,14 @@ class RebateLifecycleServiceTest {
   }
 
   @Test
-  void processIncludesTodayWhenRebateDueRunCoversCurrentDate() {
+  void currentDayAccruesButDailyPaymentWaitsUntilDueDate() {
     loan.setSettledAt(Instant.parse("2026-11-02T08:00:00Z"));
     agreement.setRebateSettlementFrequency("DAILY");
     var result = rebates.process(7);
     assertEquals(LocalDate.parse("2026-11-02"), result.processedThrough());
     assertEquals(1, result.daysRecorded());
-    assertEquals(1, result.settlementsQueued());
-    assertEquals(new BigDecimal("10.000000"), result.queuedSettlementAmount());
+    assertEquals(0, result.settlementsQueued());
+    assertEquals(BigDecimal.ZERO, result.queuedSettlementAmount());
   }
 
   @Test
@@ -134,17 +134,17 @@ class RebateLifecycleServiceTest {
     var prior = rebates.process(7);
     assertEquals(LocalDate.parse("2026-11-02"), prior.processedThrough());
     assertEquals(1, prior.daysRecorded());
-    assertEquals(1, prior.settlementsQueued());
+    assertEquals(0, prior.settlementsQueued());
     var today = rebates.accrueToday(7);
     assertFalse(today.created());
-    assertEquals(List.of("ACCRUAL_REPORTED", "REBATE_ACCRUED", "REBATE_PAID"), events.stream().map(e -> e.path("type").asText()).toList());
+    assertEquals(List.of("ACCRUAL_REPORTED"), events.stream().map(e -> e.path("type").asText()).toList());
 
     Instant closedAt = Instant.parse("2026-11-02T10:15:00Z");
     when(clock.instant()).thenReturn(closedAt);
     loan.setClosedAt(closedAt);
     var closed = rebates.process(7);
     assertEquals(0, closed.daysRecorded());
-    assertEquals(0, closed.settlementsQueued());
+    assertEquals(1, closed.settlementsQueued());
     assertEquals(0, rebates.process(7).settlementsQueued());
   }
 

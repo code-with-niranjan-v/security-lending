@@ -40,6 +40,7 @@ class LenderWorkflowTests {
   @Autowired ReadService read;
   @Autowired LoanScreenService loanScreen;
   @Autowired ValuationScreenService valuationScreens;
+  @Autowired FeeRebateScreenService feeScreens;
   @Autowired CollateralScreenService collateralScreens;
   @Autowired OutboxService outbox;
   @Autowired JsonService json;
@@ -177,6 +178,160 @@ class LenderWorkflowTests {
                 version,
                 Instant.now(),
                 json.tree(json.write(data)))));
+  }
+
+  @Test
+  void liveFeesAndRebatesMapRealTypesBorrowersTotalsAndSettlementRecords() throws Exception {
+    var o = organization();
+    var c = connection(o);
+    long sec = security("100");
+    var l = activeLoan(o, c, sec, true);
+    String day = LocalDate.now(ZoneId.of("Asia/Kolkata")).toString();
+    lifecycle(
+        o,
+        "ACCRUAL_REPORTED",
+        991001L,
+        1,
+        Map.of(
+            "loanId",
+            l.getId(),
+            "type",
+            "FEE",
+            "date",
+            day,
+            "baseValue",
+            "10000",
+            "rate",
+            "0.03",
+            "amount",
+            "0.821918"));
+    lifecycle(
+        o,
+        "ACCRUAL_REPORTED",
+        991002L,
+        1,
+        Map.of(
+            "loanId",
+            l.getId(),
+            "type",
+            "REBATE",
+            "date",
+            day,
+            "baseValue",
+            "11000",
+            "rate",
+            "0.01",
+            "amount",
+            "0.301370"));
+    String path = "/api/v1/organizations/" + o.getId() + "/lenddesk/fees-rebates/overview";
+    mvc.perform(get(path).param("tab", "FEE"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.records.totalElements").value(1))
+        .andExpect(jsonPath("$.data.records.content[0].type").value("FEE"))
+        .andExpect(jsonPath("$.data.records.content[0].borrower").value(c.getName()))
+        .andExpect(jsonPath("$.data.records.content[0].rateBps").value(300))
+        .andExpect(jsonPath("$.data.records.content[0].accruedTotal").value(0.821918))
+        .andExpect(jsonPath("$.data.counts.REBATE").value(1));
+    mvc.perform(get(path).param("tab", "REBATE"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.records.content[0].type").value("REBATE"))
+        .andExpect(jsonPath("$.data.records.content[0].settlementRule").value("AT_CLOSE"))
+        .andExpect(jsonPath("$.data.totals[0].rebateToday").value(0.301370));
+    lifecycle(
+        o,
+        "FEE_BILL_ISSUED",
+        991003L,
+        1,
+        Map.of(
+            "loanId",
+            l.getId(),
+            "amount",
+            "0.821918",
+            "rate",
+            "0.03",
+            "periodStart",
+            day,
+            "periodEnd",
+            day,
+            "dueDate",
+            day));
+    mvc.perform(get(path).param("tab", "DUE"))
+        .andExpect(jsonPath("$.data.records.totalElements").value(1))
+        .andExpect(jsonPath("$.data.records.content[0].category").value("fees"))
+        .andExpect(jsonPath("$.data.records.content[0].status").value("DUE"));
+    mvc.perform(get(path).param("tab", "INVALID")).andExpect(status().isBadRequest());
+    var other = organization();
+    mvc.perform(get("/api/v1/organizations/" + other.getId() + "/lenddesk/fees-rebates/overview"))
+        .andExpect(jsonPath("$.data.records.totalElements").value(0));
+  }
+
+  @Test
+  void accrualRunsAreScopedIdempotentAndExposeOwnerResultsAndFailures() throws Exception {
+    var o = organization();
+    var c = connection(o);
+    long sec = security("100");
+    var l = activeLoan(o, c, sec, true);
+    var r =
+        lifecycleRequests.accrual(
+            o.getId(), l.getId(), "FEE", new LifecycleActionRequest("fee-run"));
+    assertEquals(
+        r.getId(),
+        lifecycleRequests
+            .accrual(o.getId(), l.getId(), "FEE", new LifecycleActionRequest("fee-run"))
+            .getId());
+    assertEquals(
+        r.getId(),
+        lifecycleRequests
+            .accrual(o.getId(), l.getId(), "FEE", new LifecycleActionRequest("second-pending-key"))
+            .getId());
+    assertThrows(
+        ResponseStatusException.class,
+        () ->
+            lifecycleRequests.accrual(
+                o.getId(), l.getId(), "REBATE", new LifecycleActionRequest("fee-run")));
+    lifecycle(
+        o,
+        "ACCRUAL_RUN_COMPLETED",
+        r.getId(),
+        1,
+        Map.of(
+            "loanId",
+            l.getId(),
+            "kind",
+            "FEE",
+            "result",
+            Map.of(
+                "loanId",
+                l.getId(),
+                "daysRecorded",
+                1,
+                "billsQueued",
+                0,
+                "billedAmount",
+                0,
+                "processedThrough",
+                LocalDate.now().toString())));
+    assertEquals("COMPLETED", feeScreens.run(o.getId(), r.getId()).get("status"));
+    var next =
+        lifecycleRequests.accrual(
+            o.getId(), l.getId(), "REBATE", new LifecycleActionRequest("rebate-run"));
+    lifecycle(
+        o,
+        "LIFECYCLE_REQUEST_REJECTED",
+        next.getId(),
+        1,
+        Map.of("reason", "Market data unavailable"));
+    assertEquals(
+        "Market data unavailable", feeScreens.run(o.getId(), next.getId()).get("failureReason"));
+    var other = organization();
+    mvc.perform(get("/api/v1/organizations/" + other.getId() + "/accrual-runs/" + r.getId()))
+        .andExpect(status().isNotFound());
+    mvc.perform(
+            post("/api/v1/organizations/" + o.getId() + "/fees/accrual-runs")
+                .contentType("application/json")
+                .content("{\"loanIds\":[],\"clientRequestId\":\"empty\"}"))
+        .andExpect(status().isBadRequest());
+    assertEquals(100, l.getOutstandingQuantity());
   }
 
   @Test

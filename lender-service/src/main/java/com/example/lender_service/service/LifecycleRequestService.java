@@ -122,6 +122,55 @@ public class LifecycleRequestService {
         .toList();
   }
 
+  public LifecycleRequest accrual(
+      long org, long loanId, String kind, LifecycleActionRequest request) {
+    tenants.lock(org);
+    require(Set.of("FEE", "REBATE").contains(kind), "Unknown accrual kind");
+    var loan = found(loans.findByIdAndOrganizationId(loanId, org));
+    String type = kind + "_ACCRUAL_REQUESTED";
+    var old = requests.findByOrganizationIdAndClientRequestId(org, request.clientRequestId());
+    if (old.isPresent()) {
+      require(
+          type.equals(old.get().getType()) && Objects.equals(old.get().getLoanId(), loanId),
+          "Client request ID reused for different details");
+      return old.get();
+    }
+    require(
+        loan.getSettledAt() != null
+            && !loan.getSettledAt().isAfter(clock.instant())
+            && Set.of("ACTIVE", "CLOSED").contains(loan.getStatus()),
+        "Accrual requires a settled active or closed loan");
+    var agreement = found(agreements.findByIdAndOrganizationId(loan.getMslaId(), org));
+    require(
+        (kind.equals("FEE") ? agreement.getFeeRate() : agreement.getRebateRate()).signum() > 0,
+        "MSLA rate must be positive");
+    var pending =
+        requests.findByOrganizationIdAndLoanIdIn(org, List.of(loanId)).stream()
+            .filter(
+                x ->
+                    type.equals(x.getType())
+                        && Set.of("PENDING", "ACCEPTED").contains(x.getStatus()))
+            .findFirst();
+    if (pending.isPresent()) return pending.get();
+    return create(loan, type, request.clientRequestId(), request);
+  }
+
+  public List<LifecycleRequest> accrualBatch(long org, String kind, AccrualBatchRequest request) {
+    tenants.lock(org);
+    require(
+        new HashSet<>(request.loanIds()).size() == request.loanIds().size(),
+        "Duplicate loan IDs in batch");
+    return request.loanIds().stream()
+        .map(
+            id ->
+                accrual(
+                    org,
+                    id,
+                    kind,
+                    new LifecycleActionRequest(request.clientRequestId() + ":" + id)))
+        .toList();
+  }
+
   public LifecycleRequest rebatePayment(long org, long id, LifecycleActionRequest r) {
     tenants.lock(org);
     var rebate = found(rebates.findByIdAndOrganizationId(id, org));

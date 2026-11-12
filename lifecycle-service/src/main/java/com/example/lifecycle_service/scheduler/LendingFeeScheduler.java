@@ -11,7 +11,11 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-@ConditionalOnProperty(name = "lifecycle.kafka-enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(
+    prefix = "lifecycle",
+    name = {"kafka-enabled", "accrual-jobs-enabled"},
+    havingValue = "true",
+    matchIfMissing = true)
 public class LendingFeeScheduler {
   private final LoanRepository loans;
   private final LendingFeeService fees;

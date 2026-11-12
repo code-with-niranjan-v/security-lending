@@ -53,6 +53,15 @@ public class Loan {
   @Column(name = "settled_at")
   private Instant settledAt;
 
+  @Column(name = "fee_processed_through")
+  private java.time.LocalDate feeProcessedThrough;
+
+  @Column(name = "rebate_processed_through")
+  private java.time.LocalDate rebateProcessedThrough;
+
+  @Column(name = "fee_finalized", nullable = false)
+  private boolean feeFinalized;
+
   @Column(name = "closed_at")
   private Instant closedAt;
 }

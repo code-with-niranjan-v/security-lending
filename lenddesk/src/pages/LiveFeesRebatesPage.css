@@ -1,0 +1,51 @@
+.live-fees-rebates .al-heading {
+  flex-wrap: wrap;
+}
+.live-fees-rebates .al-heading > div:last-child {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.fee-business-date {
+  font-size: 12px;
+  color: #67617b;
+}
+.fee-detail-grid {
+  grid-template-columns: 1fr 1fr;
+  padding: 10px;
+  white-space: normal;
+}
+.live-fees-rebates .al-filters select {
+  max-width: 400px;
+}
+.accrual-review {
+  border: 1px solid #cec3fc;
+  border-radius: 10px;
+  max-width: min(600px, 90vw);
+  padding: 24px;
+  color: #171237;
+}
+.accrual-review::backdrop {
+  background: #16112a66;
+}
+.accrual-review button {
+  margin-right: 8px;
+}
+@media (max-width: 760px) {
+  .workspace:has(.live-fees-rebates) .topbar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 63px;
+    padding-block: 8px;
+  }
+  .workspace:has(.live-fees-rebates) .topbar .search {
+    order: 2;
+    flex-basis: 100%;
+    max-width: none;
+  }
+  .fee-detail-grid {
+    grid-template-columns: 1fr;
+  }
+  .live-fees-rebates .al-filters select {
+    max-width: 65%;
+  }
+}

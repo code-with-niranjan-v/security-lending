@@ -52,10 +52,11 @@ public class RebateLifecycleService {
       recorded = accrueDays(loan, agreement, first, through, now);
     }
     var frequency = RebateSchedule.valueOf(agreement.getRebateSettlementFrequency());
+    LocalDate settlementThrough=closedOn==null?businessDate(now).minusDays(1):closedOn;
     var due = new TreeMap<LocalDate, List<RebateDay>>();
     for (var day : days.findByLoanIdAndSettlementReferenceIdIsNullOrderByAccrualDateAsc(loanId)) {
       LocalDate end = frequency.periodEnd(day.getAccrualDate(), closedOn);
-      if (end != null && !end.isAfter(through)) {
+      if (end != null && !end.isAfter(settlementThrough)) {
         due.computeIfAbsent(end, ignored -> new ArrayList<>()).add(day);
       }
     }
@@ -87,17 +88,20 @@ public class RebateLifecycleService {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "Loan must be settled and open");
     }
     if (loan.getRebateProcessedThrough() != null && !loan.getRebateProcessedThrough().isBefore(today)) {
-      throw new ResponseStatusException(HttpStatus.CONFLICT, "Rebates have already been processed through today");
+      throw new ResponseStatusException(
+          HttpStatus.CONFLICT, "Rebates have already been processed through today");
     }
     var agreement = agreements.findById(loan.getMslaId()).orElseThrow();
     if (agreement.getRebateRate().signum() <= 0) {
-      throw new ResponseStatusException(HttpStatus.CONFLICT, "MSLA must have a positive rebate rate");
+      throw new ResponseStatusException(
+          HttpStatus.CONFLICT, "MSLA must have a positive rebate rate");
     }
     var balance = collateral.cashChangesBefore(loanId, now).stream()
         .map(CashCollateralChange::balanceChange)
         .reduce(BigDecimal.ZERO, BigDecimal::add);
     if (balance.signum() <= 0) {
-      throw new ResponseStatusException(HttpStatus.CONFLICT, "Loan has no confirmed cash collateral");
+      throw new ResponseStatusException(
+          HttpStatus.CONFLICT, "Loan has no confirmed cash collateral");
     }
     var day = recordDay(loan, agreement, today, balance, now);
     return new RebateTodayResult(loanId, today, day.getCashBalance(), day.getAmount(), true);
@@ -112,12 +116,12 @@ public class RebateLifecycleService {
   }
 
   private int accrueDays(Loan loan, Msla agreement, LocalDate first, LocalDate through, Instant now) {
-    var changes = collateral.cashChangesBefore(loan.getId(), cutoff(loan, through));
+    var changes = collateral.cashChangesBefore(loan.getId(), cutoff(loan, through, now));
     int changeIndex = 0;
     int recorded = 0;
     BigDecimal balance = BigDecimal.ZERO;
     for (LocalDate day = first; !day.isAfter(through); day = day.plusDays(1)) {
-      Instant end = cutoff(loan, day);
+      Instant end = cutoff(loan, day, now);
       while (changeIndex < changes.size() && changes.get(changeIndex).recordedAt().isBefore(end)) {
         balance = balance.add(changes.get(changeIndex++).balanceChange());
       }
@@ -159,10 +163,13 @@ public class RebateLifecycleService {
     return total;
   }
 
-  private Instant cutoff(Loan loan, LocalDate day) {
+  private Instant cutoff(Loan loan, LocalDate day, Instant now) {
     Instant dayEnd = day.plusDays(1).atStartOfDay(BUSINESS_ZONE).toInstant();
-    return loan.getClosedAt() != null && loan.getClosedAt().isBefore(dayEnd)
-        ? loan.getClosedAt() : dayEnd;
+    Instant cutoff =
+        loan.getClosedAt() != null && loan.getClosedAt().isBefore(dayEnd)
+            ? loan.getClosedAt()
+            : dayEnd;
+    return cutoff.isAfter(now) ? now : cutoff;
   }
 
   private LocalDate businessDate(Instant instant) {
@@ -173,9 +180,23 @@ public class RebateLifecycleService {
       Map<String, Object> data) {
     String eventId = prefix + reference;
     try {
-      String payload = json.writeValueAsString(Map.of(
-          "eventId", eventId, "type", type, "organizationId", loan.getOrganizationId(),
-          "referenceId", reference, "version", version, "occurredAt", now.toString(), "data", data));
+      String payload =
+          json.writeValueAsString(
+              Map.of(
+                  "eventId",
+                  eventId,
+                  "type",
+                  type,
+                  "organizationId",
+                  loan.getOrganizationId(),
+                  "referenceId",
+                  reference,
+                  "version",
+                  version,
+                  "occurredAt",
+                  now.toString(),
+                  "data",
+                  data));
       outbox.save(new LenderOutboxEvent(loan.getOrganizationId(), eventId, topic, payload, now));
     } catch (JsonProcessingException exception) {
       throw new IllegalStateException("Could not serialize rebate event " + eventId, exception);

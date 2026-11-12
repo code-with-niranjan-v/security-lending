@@ -110,11 +110,29 @@ public class LifecycleEventService {
             Set.of("PENDING", "ACCEPTED").contains(r.getStatus()),
             "Lifecycle request already completed");
         r.setStatus(e.type().endsWith("ACCEPTED") ? "ACCEPTED" : "REJECTED");
-        if ("VALUATION_REQUESTED".equals(r.getType()) && e.type().endsWith("REJECTED")) {
+        if (Set.of("VALUATION_REQUESTED", "FEE_ACCRUAL_REQUESTED", "REBATE_ACCRUAL_REQUESTED")
+                .contains(r.getType())
+            && e.type().endsWith("REJECTED")) {
           var payload = new LinkedHashMap<>(json.map(json.tree(r.getPayload())));
           payload.put("failureReason", text(e.data(), "reason"));
           r.setPayload(json.write(payload));
         }
+      }
+      case "ACCRUAL_RUN_COMPLETED" -> {
+        var r = found(requests.findByIdAndOrganizationId(e.referenceId(), e.organizationId()));
+        require(
+            Set.of("FEE_ACCRUAL_REQUESTED", "REBATE_ACCRUAL_REQUESTED").contains(r.getType())
+                && Objects.equals(r.getLoanId(), number(e.data(), "loanId"))
+                && r.getType().equals(text(e.data(), "kind") + "_ACCRUAL_REQUESTED"),
+            "Accrual report does not match request");
+        require(
+            Set.of("PENDING", "ACCEPTED").contains(r.getStatus()),
+            "Accrual run is already complete");
+        require(e.data().path("result").isObject(), "Accrual result is missing");
+        var payload = new LinkedHashMap<>(json.map(json.tree(r.getPayload())));
+        payload.put("result", json.map(e.data().get("result")));
+        r.setPayload(json.write(payload));
+        r.setStatus("COMPLETED");
       }
       case "LOAN_STATUS_UPDATED" -> {
         var l = found(loans.findByIdAndOrganizationId(e.referenceId(), e.organizationId()));

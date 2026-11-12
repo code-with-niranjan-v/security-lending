@@ -68,11 +68,12 @@ public class LendingFeeService {
     if (agreement.getFeeRate().signum() > 0 && !first.isAfter(through)) {
       count = accrueDays(loan, agreement, first, through, now);
     }
+    LocalDate settlementThrough=closed==null?date(now).minusDays(1):closed;
     var due = new TreeMap<LocalDate, List<LendingFeeDay>>();
     for (var day : days.findByLoanIdAndBilledFalseOrderByAccrualDateAsc(loanId)) {
       if (day.getAccrualDate().isAfter(through)) continue;
       LocalDate end = billingEnd(agreement, day.getAccrualDate(), closed);
-      if (end != null && !end.isAfter(through)) {
+      if (end != null && !end.isAfter(settlementThrough)) {
         due.computeIfAbsent(end, ignored -> new ArrayList<>()).add(day);
       }
     }
@@ -106,11 +107,13 @@ public class LendingFeeService {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "Loan must be settled and open");
     }
     if (loan.getFeeProcessedThrough() != null && !loan.getFeeProcessedThrough().isBefore(today)) {
-      throw new ResponseStatusException(HttpStatus.CONFLICT, "Fees have already been processed through today");
+      throw new ResponseStatusException(
+          HttpStatus.CONFLICT, "Fees have already been processed through today");
     }
     var agreement = agreements.findById(loan.getMslaId()).orElseThrow();
     if (agreement.getFeeRate().signum() <= 0) {
-      throw new ResponseStatusException(HttpStatus.CONFLICT, "MSLA must have a positive lending fee rate");
+      throw new ResponseStatusException(
+          HttpStatus.CONFLICT, "MSLA must have a positive lending fee rate");
     }
     var mark = market.history(security(loan), now, true).floorEntry(now);
     if (mark == null) throw missingPrice(today);
@@ -120,19 +123,19 @@ public class LendingFeeService {
 
   private int accrueDays(Loan loan, Msla agreement, LocalDate first, LocalDate through, Instant now) {
     var settledReturns = returns.findByLoanIdAndStatusAndSettledAtBeforeOrderBySettledAtAscIdAsc(
-        loan.getId(), "SETTLED", cutoff(loan, through));
+        loan.getId(), "SETTLED", cutoff(loan, through, now));
     NavigableMap<Instant, BigDecimal> marks = null;
     long outstanding = loan.getQuantity();
     int returnIndex = 0;
     int count = 0;
     for (LocalDate day = first; !day.isAfter(through); day = day.plusDays(1)) {
-      Instant end = cutoff(loan, day);
+      Instant end = cutoff(loan, day, now);
       while (returnIndex < settledReturns.size()
           && !date(settledReturns.get(returnIndex).getSettledAt()).isAfter(day)) {
         outstanding -= settledReturns.get(returnIndex++).getQuantity();
       }
       if (outstanding <= 0 || days.findByLoanIdAndAccrualDate(loan.getId(), day).isPresent()) continue;
-      if (marks == null) marks = market.history(security(loan), cutoff(loan, through), false);
+      if (marks == null) marks = market.history(security(loan), cutoff(loan, through, now), false);
       var mark = marks.floorEntry(end);
       if (mark == null) throw missingPrice(day);
       recordDay(loan, agreement, day, outstanding, mark.getValue(), now);
@@ -188,12 +191,17 @@ public class LendingFeeService {
   }
 
   private FeeSecurity security(Loan loan) {
-    return securities.findById(loan.getSecurityId()).orElseThrow(
-        () -> new ResponseStatusException(HttpStatus.CONFLICT, "Loan security is missing from market data"));
+    return securities
+        .findById(loan.getSecurityId())
+        .orElseThrow(
+            () ->
+                new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Loan security is missing from market data"));
   }
 
   private static ResponseStatusException missingPrice(LocalDate date) {
-    return new ResponseStatusException(HttpStatus.CONFLICT, "No completed market price available by " + date);
+    return new ResponseStatusException(
+        HttpStatus.CONFLICT, "No completed market price available by " + date);
   }
 
   private static LocalDate billingEnd(Msla agreement, LocalDate day, LocalDate closed) {
@@ -202,9 +210,11 @@ public class LendingFeeService {
     return closed != null && closed.isBefore(monthEnd) ? closed : monthEnd;
   }
 
-  private static Instant cutoff(Loan loan, LocalDate day) {
+  private static Instant cutoff(Loan loan, LocalDate day, Instant now) {
     Instant end = day.plusDays(1).atStartOfDay(BUSINESS_ZONE).toInstant();
-    return loan.getClosedAt() != null && loan.getClosedAt().isBefore(end) ? loan.getClosedAt() : end;
+    Instant cutoff =
+        loan.getClosedAt() != null && loan.getClosedAt().isBefore(end) ? loan.getClosedAt() : end;
+    return cutoff.isAfter(now) ? now : cutoff;
   }
 
   private static LocalDate date(Instant instant) {

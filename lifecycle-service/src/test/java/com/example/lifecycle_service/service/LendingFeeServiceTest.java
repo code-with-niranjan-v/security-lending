@@ -98,7 +98,7 @@ class LendingFeeServiceTest {
 
     loan.setClosedAt(Instant.parse("2026-11-02T09:00:00Z"));
     var finalRun = fees.process(7);
-    assertEquals(1, finalRun.daysRecorded());
+    assertEquals(0, finalRun.daysRecorded());
     assertEquals(1, finalRun.billsQueued());
     assertEquals(0, new BigDecimal("4.6").compareTo(first.billedAmount().add(finalRun.billedAmount())));
     JsonNode lastEvent = events.get(events.size() - 1);
