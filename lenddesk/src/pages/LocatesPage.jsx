@@ -5,6 +5,8 @@ import { useReferenceSort } from '../hooks/useReferenceSort'
 import { designLocates, locateReservations, locateActivity } from '../data/designLocates'
 import './ReferencePages.css'
 import './LocatesPage.css'
+import LiveLocatesPage from './LiveLocatesPage'
+import { useDataSource } from '../hooks/useDataSource'
 
 const number = value => value.toLocaleString('en-US')
 const emptyFilters = { borrower: '', msla: '', security: '', status: '', expiryTone: '' }
@@ -25,6 +27,11 @@ function LocateDetails({ row }) {
 }
 
 export default function LocatesPage() {
+  const { mode } = useDataSource()
+  return mode === 'live' ? <LiveLocatesPage /> : <DemoLocatesPage />
+}
+
+function DemoLocatesPage() {
   const { searchTerm = '' } = useOutletContext()
   const navigate = useNavigate()
   const [expanded, setExpanded] = useState('LOC-017222')

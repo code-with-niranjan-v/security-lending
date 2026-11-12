@@ -47,3 +47,24 @@
 .locate-reference-details > .ref-detail-card .ref-event-icon { display: inline-block; line-height: 20px; }
 .locate-reference-details > .ref-detail-card th { height: 28px; }
 @media (max-width: 760px) { .locate-reference-filters select, .locate-reference-filters label:first-child select { width: 62%; } }
+.live-locate-decision { padding: 12px; border-top: 1px solid #ded3f4; display: grid; gap: 8px; }
+.live-locate-decision h3 { margin: 0; font-size: 14px; }
+.live-locate-decision label { display: grid; gap: 5px; font-size: 12px; }
+.live-locate-decision input, .live-locate-decision select, .live-locate-decision textarea { width: 100%; min-width: 0; border: 1px solid #cfc2ea; border-radius: 5px; padding: 6px 8px; font: inherit; background: #fcfaff; color: #19102e; }
+.live-locate-decision small { font-size: 10px; color: #70617d; }
+.live-locate-review { width: min(500px,calc(100vw - 30px)); border: 1px solid #ccbce5; border-radius: 10px; padding: 22px; color: #241739; background: #fcfaff; white-space: normal; }
+.live-locate-review::backdrop { background: #21112d77; }
+.live-locate-review h2 { font-size: 20px; margin: 0 0 10px; }
+.live-locate-review p { font-size: 13px; }
+.live-locate-review [role=alert] { color: #a62342; }
+.live-locate-review > div { display: flex; justify-content: flex-end; gap: 10px; }
+.live-locate-review button { padding: 8px 14px; border: 1px solid #cfc1e5; border-radius: 6px; }
+.live-locate-notice { margin: 0 0 10px; padding: 10px 14px; border-radius: 7px; border: 1px solid #d5c7f8; background: #ede6ff; font-size: 12px; }
+.live-locates-page .locate-detail-grid { align-items: start; }
+.live-locates-page .locate-summary > div { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+.live-locates-page .locate-summary dl { min-width: 0; }
+.live-locates-page .locate-summary dl > div { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.15fr); }
+.live-locates-page .locate-summary dt, .live-locates-page .locate-summary dd { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.live-locates-page .locate-summary .locate-expiry { white-space: normal; padding: 3px 5px; font-size: 10px; }
+.live-locates-page .live-locate-decision { grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,2fr) auto; align-items: end; border: 1px solid #ded3f4; border-radius: 8px; }
+.live-locates-page .live-locate-decision > h3 { grid-column: 1 / -1; }

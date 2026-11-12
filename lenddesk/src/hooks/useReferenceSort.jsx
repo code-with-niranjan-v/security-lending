@@ -11,7 +11,7 @@ export function useReferenceSort(rows) {
       return match ? Number(match[1]) * ({ K: 1e3, M: 1e6, B: 1e9 }[match[2]?.toUpperCase()] ?? 1) : NaN
     }
     const x = numeric(left), y = numeric(right)
-    const dateKey = ['effectiveDate', 'expiryDate', 'expiry', 'requested', 'timestamp', 'activity'].includes(sort.key)
+    const dateKey = ['effectiveDate', 'expiryDate', 'expiry', 'requested', 'timestamp', 'activity', 'expiresAt'].includes(sort.key)
     const result = dateKey ? new Date(left) - new Date(right) : Number.isFinite(x) && Number.isFinite(y) ? x - y : String(left).localeCompare(String(right))
     return result * sort.direction
   })

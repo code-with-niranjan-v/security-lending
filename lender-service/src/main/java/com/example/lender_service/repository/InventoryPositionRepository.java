@@ -12,4 +12,6 @@ public interface InventoryPositionRepository extends JpaRepository<InventoryPosi
 
   Optional<InventoryPosition> findByOrganizationIdAndSecurityId(
       Long organizationId, Long securityId);
+
+  List<InventoryPosition> findByOrganizationIdAndSecurityIdIn(Long organizationId, Collection<Long> securityIds);
 }

@@ -15,4 +15,6 @@ public interface LoanRepository extends JpaRepository<Loan, Long> {
   List<Loan> findByMslaId(Long mslaId);
 
   List<Loan> findByOrganizationIdAndMslaIdIn(Long organizationId, Collection<Long> mslaIds);
+
+  List<Loan> findByOrganizationIdAndReservationIdIn(Long organizationId, Collection<Long> reservationIds);
 }

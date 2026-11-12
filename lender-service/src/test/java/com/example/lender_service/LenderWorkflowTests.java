@@ -57,6 +57,7 @@ class LenderWorkflowTests {
   @Autowired RecallRepository recalls;
   @Autowired LoanDefaultRepository defaults;
   @Autowired MockMvc mvc;
+  @Autowired LocateScreenService locateScreenForTests;
   @Autowired SecurityMasterRepository securityMasterForScreenTest;
   @Autowired LendingFeeRepository feesForScreenTest;
   static final AtomicLong ids = new AtomicLong(10000);
@@ -295,6 +296,95 @@ class LenderWorkflowTests {
     mvc.perform(get(base).param("size", "1").param("page", "2"))
         .andExpect(jsonPath("$.data.agreements.content").isEmpty())
         .andExpect(jsonPath("$.data.agreements.totalElements").value(2));
+  }
+
+  @Test
+  void locateScreenSeparatesReservationsConsumedCapacityAndPhysicalInventory() throws Exception {
+    var o = organization(); var c = connection(o); long securityId = security("100");
+    inventory.create(o.getId(), new InventoryRequest(securityId, 1000, "Custody"));
+    var a = agreement(o, c, securityId, true);
+    var r = reservation(o, c, securityId, 100);
+    var l = pendingLoan(o, c, 30);
+    var locate = locates.findById(r.getLocateId()).orElseThrow();
+    locate.setExpiresAt(Instant.now().plusSeconds(7200)); locates.saveAndFlush(locate);
+    String base = "/api/v1/organizations/" + o.getId() + "/lenddesk/locates";
+    mvc.perform(get(base + "/overview").param("mslaId", String.valueOf(a.getId())).param("expiry", "UPCOMING"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.pendingCount").value(0))
+        .andExpect(jsonPath("$.data.activeReservationCount").value(1))
+        .andExpect(jsonPath("$.data.locates.content[0].reservedQuantity").value(70))
+        .andExpect(jsonPath("$.data.locates.content[0].consumedQuantity").value(30))
+        .andExpect(jsonPath("$.data.locates.content[0].availableQuantity").value(0))
+        .andExpect(jsonPath("$.data.locates.content[0].inventoryAvailableQuantity").value(900));
+    mvc.perform(get(base + "/" + locate.getId() + "/screen"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.reservations[0].remainingQuantity").value(70))
+        .andExpect(jsonPath("$.data.reservations[0].linkedLoans[0].id").value(l.getId()))
+        .andExpect(jsonPath("$.data.locate.canApprove").value(false))
+        .andExpect(jsonPath("$.data.activity").isNotEmpty());
+    mvc.perform(get(base + "/overview").param("q", "EQ" + securityId))
+        .andExpect(jsonPath("$.data.locates.totalElements").value(1));
+    mvc.perform(get(base + "/overview").param("q", "LOC-" + locate.getId()))
+        .andExpect(jsonPath("$.data.locates.totalElements").value(1));
+    var other = organization();
+    mvc.perform(get("/api/v1/organizations/" + other.getId() + "/lenddesk/locates/" + locate.getId() + "/screen"))
+        .andExpect(status().isNotFound());
+    mvc.perform(get("/api/v1/organizations/" + other.getId() + "/lenddesk/locates/overview"))
+        .andExpect(jsonPath("$.data.locates.totalElements").value(0))
+        .andExpect(jsonPath("$.data.securities").isEmpty());
+  }
+
+  @Test
+  void liveLocateDecisionsAreGuardedAndDoNotReserveInventory() throws Exception {
+    var o = organization(); var c = connection(o); long securityId = security("100");
+    inventory.create(o.getId(), new InventoryRequest(securityId, 1000, "Custody"));
+    agreement(o, c, securityId, true);
+    command(o, "LOCATE_REQUESTED", 101, 10, new LocateCommand(10, securityId, 200, Instant.now().plusSeconds(7200)));
+    var locate = locates.findByConnectionIdAndBorrowerLocateId(c.getId(), 101L).orElseThrow();
+    String decision = "/api/v1/organizations/" + o.getId() + "/locates/" + locate.getId();
+    String screen = "/api/v1/organizations/" + o.getId() + "/lenddesk/locates/" + locate.getId() + "/screen";
+    mvc.perform(get(screen)).andExpect(jsonPath("$.data.locate.canApprove").value(true));
+    mvc.perform(post(decision + "/approve").contentType("application/json").content("{\"quantity\":201,\"reason\":\"Too much\"}"))
+        .andExpect(status().isConflict());
+    mvc.perform(post(decision + "/approve").contentType("application/json").content("{\"quantity\":150,\"reason\":\"Approved partial\"}"))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("PARTIALLY_APPROVED"));
+    mvc.perform(get(screen))
+        .andExpect(jsonPath("$.data.locate.availableQuantity").value(150))
+        .andExpect(jsonPath("$.data.locate.inventoryAvailableQuantity").value(1000))
+        .andExpect(jsonPath("$.data.reservations").isEmpty())
+        .andExpect(jsonPath("$.data.locate.canApprove").value(false));
+    long eventCount = events.count();
+    mvc.perform(post(decision + "/approve").contentType("application/json").content("{\"quantity\":150,\"reason\":\"Retry\"}"))
+        .andExpect(status().isConflict());
+    assertEquals(eventCount, events.count());
+    command(o, "LOCATE_REQUESTED", 102, 10, new LocateCommand(10, securityId, 100, Instant.now().plusSeconds(7200)));
+    var rejected = locates.findByConnectionIdAndBorrowerLocateId(c.getId(), 102L).orElseThrow();
+    mvc.perform(post("/api/v1/organizations/" + o.getId() + "/locates/" + rejected.getId() + "/reject")
+        .contentType("application/json").content("{\"reason\":\"Outside mandate\"}"))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("REJECTED"));
+    var trail = locateScreenForTests.detail(o.getId(), rejected.getId());
+    assertTrue(trail.activity().stream().anyMatch(event -> event.type().equals("LOCATE_DECISION_REJECTED")));
+  }
+
+  @Test
+  void locateExpiryFiltersAndInvalidParametersRespectStoredState() throws Exception {
+    var o = organization(); var c = connection(o); long securityId = security("100");
+    inventory.create(o.getId(), new InventoryRequest(securityId, 1000, "Custody"));
+    agreement(o, c, securityId, true); var r = reservation(o, c, securityId, 100);
+    var locate = locates.findById(r.getLocateId()).orElseThrow();
+    locate.setExpiresAt(Instant.now().minusSeconds(60)); locates.saveAndFlush(locate);
+    String base = "/api/v1/organizations/" + o.getId() + "/lenddesk/locates";
+    mvc.perform(get(base + "/overview").param("expiry", "EXPIRED"))
+        .andExpect(jsonPath("$.data.locates.content[0].status").value("APPROVED"))
+        .andExpect(jsonPath("$.data.locates.content[0].expiryBucket").value("EXPIRED"))
+        .andExpect(jsonPath("$.data.locates.content[0].availableQuantity").value(0))
+        .andExpect(jsonPath("$.data.locates.content[0].reservedQuantity").value(100))
+        .andExpect(jsonPath("$.data.activeReservationCount").value(1));
+    mvc.perform(get(base + "/overview").param("expiry", "URGENT"))
+        .andExpect(jsonPath("$.data.locates.content").isEmpty());
+    mvc.perform(get(base + "/overview").param("expiry", "invalid")).andExpect(status().isBadRequest());
+    mvc.perform(get(base + "/overview").param("page", "-1")).andExpect(status().isBadRequest());
+    mvc.perform(get(base + "/overview").param("size", "201")).andExpect(status().isBadRequest());
   }
 
   @Test

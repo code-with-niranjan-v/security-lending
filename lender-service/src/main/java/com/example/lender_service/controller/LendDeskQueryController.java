@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class LendDeskQueryController {
   private final ReadService read;
   private final com.example.lender_service.service.AgreementScreenService agreementScreen;
+  private final com.example.lender_service.service.LocateScreenService locateScreen;
 
   @GetMapping("/dashboard")
   public ApiResponse<?> dashboard(@PathVariable long org) { return ApiResponse.ok(read.dashboard(org)); }
@@ -24,6 +25,20 @@ public class LendDeskQueryController {
   @GetMapping("/{resource:users|borrowers|inventory|inventory-history|agreements|locates|reservations|loans|collateral|collateral-history|returns|lifecycle-requests|valuations|margin-calls|recalls|fees|rebates|accruals|defaults|buy-ins|rebate-payments|ledger|notifications|audit}")
   public ApiResponse<?> list(@PathVariable long org, @PathVariable String resource, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "200") int size) {
     return ApiResponse.ok(read.list(org, resource, page, size));
+  }
+
+  @GetMapping("/locates/overview")
+  public ApiResponse<?> locateOverview(@PathVariable long org,
+      @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size,
+      @RequestParam(required = false) Long connectionId, @RequestParam(required = false) Long mslaId,
+      @RequestParam(required = false) Long securityId, @RequestParam(required = false) String status,
+      @RequestParam(required = false) String expiry, @RequestParam(required = false) String q) {
+    return ApiResponse.ok(locateScreen.overview(org, page, size, connectionId, mslaId, securityId, status, expiry, q));
+  }
+
+  @GetMapping("/locates/{id}/screen")
+  public ApiResponse<?> locateScreen(@PathVariable long org, @PathVariable long id) {
+    return ApiResponse.ok(locateScreen.detail(org, id));
   }
 
   @GetMapping("/agreements")

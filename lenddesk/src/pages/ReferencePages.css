@@ -74,6 +74,6 @@
 @media (max-width: 760px) { .ref-heading { flex-wrap: wrap; gap: 16px; padding: 18px 4px; } .ref-heading h1 { font-size: 24px; } .ref-active-count { font-size: 14px; padding-left: 14px; } .ref-heading > .ref-primary { margin-left: 0; } .ref-filters { align-items: stretch; flex-direction: column; } .ref-filters label { justify-content: space-between; } .ref-filters select, .ref-filters input, .ref-agreements .ref-filters label:first-child select, .ref-agreements .ref-filters label:nth-child(4) select, .ref-agreements .ref-filters input { width: 62%; } .ref-summary-cards { display: grid; grid-template-columns: 1fr 1fr; } .ref-summary-cards > div { gap: 6px; padding: 10px 7px; } .ref-summary-cards small { font-size: 9px; } .ref-summary-cards strong { font-size: 12px; } .ref-summary-cards > div > span { display: none; } .ref-clear { margin-left: 0; } .workspace:has(.ref-page) .topbar .org { min-width: 110px; font-size: 11px; } .workspace:has(.ref-page) .topbar .data-source { flex-shrink: 0; } }
 
 @media (max-width: 760px) {
- .workspace:has(.live-agreements-page) .topbar { flex-wrap: wrap; height: auto; min-height: 63px; padding-top: 8px; padding-bottom: 8px; }
- .workspace:has(.live-agreements-page) .topbar .search { order: 2; flex-basis: 100%; max-width: none; }
+ .workspace:has(.live-agreements-page, .live-locates-page) .topbar { flex-wrap: wrap; height: auto; min-height: 63px; padding-top: 8px; padding-bottom: 8px; }
+ .workspace:has(.live-agreements-page, .live-locates-page) .topbar .search { order: 2; flex-basis: 100%; max-width: none; }
 }

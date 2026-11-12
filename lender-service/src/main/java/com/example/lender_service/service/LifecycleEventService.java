@@ -91,6 +91,7 @@ public class LifecycleEventService {
         require(!clock.instant().isBefore(l.getExpiresAt()), "Locate deadline has not arrived");
         if (Set.of("PENDING", "APPROVED", "PARTIALLY_APPROVED").contains(l.getStatus())) {
           l.setStatus("EXPIRED");
+          events.audit(e.organizationId(), "LOCATE_EXPIRY_CONFIRMED", String.valueOf(l.getId()));
           events.confirm(
               found(connections.findById(l.getConnectionId())),
               "LOCATE_EXPIRED",

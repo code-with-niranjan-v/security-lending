@@ -54,6 +54,7 @@ public class ReservationService {
           l.getBorrowerLocateId(),
           Map.of("reason", reason));
     }
+    events.audit(org, approve ? "LOCATE_DECISION_APPROVED" : "LOCATE_DECISION_REJECTED", String.valueOf(id));
     return l;
   }
 

@@ -16,4 +16,7 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
   Optional<Reservation> findByLocateId(Long locateId);
 
   Page<Reservation> findByOrganizationIdAndMslaId(Long organizationId, Long mslaId, Pageable pageable);
+
+  List<Reservation> findByOrganizationIdAndLocateIdIn(Long organizationId, Collection<Long> locateIds);
+  long countByOrganizationIdAndStatus(Long organizationId, String status);
 }
