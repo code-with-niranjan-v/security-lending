@@ -5,9 +5,13 @@ export function useReferenceSort(rows) {
   const sorted = [...rows]
   if (sort) sorted.sort((a, b) => {
     const left = a[sort.key], right = b[sort.key]
-    const numeric = value => Number(String(value).replace(/[$,%\s,]|bps/g, ''))
+    const numeric = value => {
+      const text = String(value).replace(/[$,%\s,]|bps/g, '')
+      const match = text.match(/^(-?\d+(?:\.\d+)?)([KMB])?$/i)
+      return match ? Number(match[1]) * ({ K: 1e3, M: 1e6, B: 1e9 }[match[2]?.toUpperCase()] ?? 1) : NaN
+    }
     const x = numeric(left), y = numeric(right)
-    const dateKey = ['effectiveDate', 'expiryDate', 'expiry'].includes(sort.key)
+    const dateKey = ['effectiveDate', 'expiryDate', 'expiry', 'requested'].includes(sort.key)
     const result = dateKey ? new Date(left) - new Date(right) : Number.isFinite(x) && Number.isFinite(y) ? x - y : String(left).localeCompare(String(right))
     return result * sort.direction
   })

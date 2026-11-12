@@ -1,0 +1,48 @@
+.lifecycle-page .ref-heading { min-height: 70px; gap: 30px; }
+.lifecycle-tabs { display: flex; padding: 0 0 0 28px; gap: 0; border-left: 1px solid #b4a7fa; }
+.lifecycle-tabs a { display: block; min-height: 36px; padding: 7px 28px; border: 1px solid #d6caff; border-right: 0; border-radius: 0; font-size: 14px; text-align: center; color: #100d43; }
+.lifecycle-tabs a:first-child { border-radius: 10px 0 0 10px; }
+.lifecycle-tabs a:last-child { border-right: 1px solid #d6caff; border-radius: 0 10px 10px 0; }
+.lifecycle-tabs a.active { color: #fff; background: linear-gradient(140deg,#7d6aff,#2510ff); border-radius: 10px; border-color: #8577ff; }
+.lifecycle-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 18px; margin: 0 7px 9px; }
+.lifecycle-metrics > div { display: flex; align-items: center; gap: 22px; padding: 8px 22px; border: 1px solid #dcd2ff; border-radius: 9px; background: linear-gradient(130deg,#f7f2ff,#ece5ff); }
+.lifecycle-metrics > div > span { color: #2512dc; font-size: 32px; line-height: 36px; }
+.lifecycle-metrics small { display: block; color: #17104a; font-size: 12px; font-weight: 650; }
+.lifecycle-metrics strong { display: block; font-size: 20px; line-height: 25px; }
+.lifecycle-filters { border: 0; background: transparent; padding: 8px 7px 10px; margin: 0; gap: 24px; flex-wrap: wrap; }
+.lifecycle-filters select { width: 175px; }
+.lifecycle-filters .ref-primary { background: #3925ff; padding: 8px 18px; }
+.lifecycle-table { min-width: 1380px; }
+.lifecycle-table > thead > tr > th { font-size: 11px; padding: 4px 6px; line-height: 14px; white-space: normal; }
+.lifecycle-table > tbody > tr > td { font-size: 12px; padding: 4px 6px; height: 32px; }
+.lifecycle-table th:first-child { width: 27px; }
+.lifecycle-table th:last-child { width: 55px; }
+.lifecycle-table .ref-badge { font-size: 11px; line-height: 16px; padding: 2px 12px; }
+.lifecycle-table .ref-num { font-weight: 650; }
+.lifecycle-manage { display: block; border: 1px solid #ded3ff; border-radius: 7px; background: #faf7ff; color: #2a17ff; padding: 2px 10px; line-height: 16px; margin: auto; }
+.lifecycle-return-details { display: grid; gap: 8px; padding: 8px 22px 0; }
+.lifecycle-return-details .ref-detail-card h2 { padding: 4px 14px; line-height: 20px; font-size: 16px; color: #16104c; border-bottom: 0; background: #f1ebff; }
+.lifecycle-return-details .ref-detail-card th { height: 28px; padding: 3px 14px; font-size: 11px; }
+.lifecycle-return-details .ref-detail-card td { height: 31px; padding: 3px 14px; font-size: 12px; }
+.lifecycle-return-details .ref-detail-card a { font-size: 12px; text-decoration: underline; }
+.lifecycle-strip dl { display: flex; justify-content: space-around; align-items: center; margin: 0; padding: 4px 12px 6px; }
+.lifecycle-strip dl > div { display: flex; flex: 1; justify-content: space-evenly; align-items: center; gap: 12px; border-left: 1px solid #baacf6; padding: 0 16px; }
+.lifecycle-strip dl > div:first-child { border: 0; }
+.lifecycle-strip dt, .lifecycle-strip dd { margin: 0; font-size: 12px; white-space: nowrap; }
+.lifecycle-strip dt { font-weight: 700; }
+.lifecycle-strip dd { font-weight: 600; }
+.lifecycle-timeline ol { list-style: none; display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); padding: 8px 16px 12px; margin: 0; }
+.lifecycle-timeline li { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 5px; font-size: 12px; position: relative; padding: 0 4px; }
+.lifecycle-timeline li::before { content: ''; position: absolute; height: 2px; background: repeating-linear-gradient(90deg,#d1c7ff 0 8px,transparent 8px 13px); left: -50%; right: 50%; top: 10px; }
+.lifecycle-timeline li.done::before, .lifecycle-timeline li.current::before { background: #23a332; }
+.lifecycle-timeline li:first-child::before { display: none; }
+.lifecycle-timeline-dot { width: 22px; height: 22px; border: 2px solid #a49ac4; border-radius: 50%; background: #fcfaff; z-index: 1; line-height: 18px; }
+.lifecycle-timeline .done .lifecycle-timeline-dot { background: #12a124; color: #fff; border-color: #12a124; font-weight: 800; }
+.lifecycle-timeline .current .lifecycle-timeline-dot { background: #3320ff; border-color: #fff; outline: 2px solid #3320ff; }
+.lifecycle-timeline strong { max-width: 150px; line-height: 15px; }
+.lifecycle-timeline time { font-size: 11px; }
+.lifecycle-other-details { padding: 10px 22px 0; }
+.lifecycle-other-details .ref-detail-card td:first-child { width: 25%; font-weight: 650; }
+@media (max-width: 1400px) { .lifecycle-filters { gap: 14px; } .lifecycle-metrics > div { padding: 8px 14px; gap: 12px; } }
+@media (max-width: 760px) { .lifecycle-page .ref-heading { gap: 14px; } .lifecycle-tabs { padding-left: 0; border: 0; width: 100%; } .lifecycle-tabs a { padding: 6px 12px; flex: 1; font-size: 12px; } .lifecycle-metrics { grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 0 10px; } .lifecycle-metrics > div { padding: 8px; gap: 8px; } .lifecycle-metrics > div > span { font-size: 24px; } .lifecycle-metrics small { font-size: 9px; } .lifecycle-metrics strong { font-size: 16px; } .lifecycle-filters select { width: 50%; } }
+.lifecycle-timeline li::after { display: none; }

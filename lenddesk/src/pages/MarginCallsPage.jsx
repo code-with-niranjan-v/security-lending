@@ -1,3 +1,8 @@
 import OperationalRegisterPage from '../components/OperationalRegisterPage'
 import { marginCallConfig } from '../data/remainingData'
-export default function MarginCallsPage() { return <OperationalRegisterPage config={marginCallConfig} /> }
+import { useDataSource } from '../hooks/useDataSource'
+import LifecycleExceptionsPage from './LifecycleExceptionsPage'
+export default function MarginCallsPage() {
+  const { mode } = useDataSource()
+  return mode === 'live' ? <OperationalRegisterPage config={marginCallConfig} /> : <LifecycleExceptionsPage view="margin-calls" />
+}
