@@ -1,11 +1,15 @@
 import { Link, useParams } from 'react-router-dom'
 import StatusBadge from '../components/StatusBadge'
 import { loans } from '../data/loanData'
+import { useDataSource } from '../hooks/useDataSource'
+import { LiveLoanDetails } from './LiveLoansPage'
 
 const tone = (value) => ({ Compliant: 'good', Active: 'good', 'Margin call open': 'risk', Partial: 'warn', None: 'neutral', Settled: 'good', Pending: 'warn', Open: 'warn', Recorded: 'neutral', Alert: 'risk' }[value] ?? 'neutral')
 
 export default function LoanDetailPage() {
   const { loanId } = useParams()
+  const {mode,organizationId,refreshKey}=useDataSource()
+  if(mode==='live')return <LiveLoanDetails key={`${organizationId}:${refreshKey}:${loanId}`} id={Number(loanId.replace(/^LOAN-/,''))}/>
   const loan = loans.find((item) => item.id === loanId) ?? loans[0]
   return <section className="detail-page">
     <div className="detail-crumb"><Link to="/loans">‹ Active loans</Link><span>/</span><b>{loan.id}</b></div>

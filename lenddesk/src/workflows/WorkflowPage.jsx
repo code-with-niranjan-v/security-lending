@@ -14,6 +14,9 @@ import RecallWorkflow from './RecallWorkflow'
 import { demoMarginCall,demoLoanAmendment,demoRecall } from './loanWorkflowFixtures'
 import { marginProjection,amendmentProjection,recallProjection,money,shares } from './loanWorkflowCalculations'
 import './WorkflowPage.css'
+import { useDataSource } from '../hooks/useDataSource'
+import { activeLoans } from '../data/activeLoanData'
+import LiveLoanWorkflow from './LiveLoanWorkflow'
 const config={
  margin:{id:'LOAN-000006',section:'Margin Calls',back:'/margin-calls',title:'Issue margin call',initial:demoMarginCall,component:MarginCallWorkflow,review:'Review margin call',status:'Margin call reviewed locally (demo)',hint:'Review coverage impact, collateral eligibility and borrower notification before sending.'},
  loan:{id:'LOAN-000006',section:'Loans',back:'/loans',title:'Manage loan',initial:demoLoanAmendment,component:LoanAmendmentWorkflow,review:'Review loan amendment',status:'Loan amendment pending counterparty acknowledgment (demo)',hint:'Confirm collateral coverage and review amended economics and maturity. Terms remain proposed until borrower acknowledgment.'},
@@ -26,16 +29,20 @@ const config={
 }
 export default function WorkflowPage({kind}){
  const params=useParams()
+ const {mode}=useDataSource()
  const settings=config[kind]
  const id=params.locateId??params.returnId??params.reservationId??params.loanId??settings.id
+ if(mode==='live'&&['loan','margin','recall'].includes(kind))return <LiveLoanWorkflow key={`${kind}:${id}`} kind={kind} id={id}/>
  return <WorkflowEditor key={`${kind}:${id}`} kind={kind} id={id} settings={settings}/>
 }
 function WorkflowEditor({kind,id,settings}){
  const navigate=useNavigate(),dialog=useRef(null),form=useRef(null)
- const {data,setData,notice,setNotice,save}=useWorkflowDraft(kind,id,settings.initial)
+ const selectedLoan=activeLoans.find(l=>l.id===id)
+ const initial=selectedLoan&&['loan','margin','recall'].includes(kind)&&id!==settings.id?{...settings.initial,borrower:selectedLoan.borrower,security:selectedLoan.symbol,outstanding:selectedLoan.outstanding,original:selectedLoan.quantity,returned:selectedLoan.returned,price:selectedLoan.price,currentCollateral:selectedLoan.collateral,agreement:selectedLoan.msla}:settings.initial
+ const {data,setData,notice,setNotice,save}=useWorkflowDraft(kind,id,initial)
  const [errors,setErrors]=useState([])
  const [submitted,setSubmitted]=useState(false)
- const supported=id===settings.id
+ const supported=id===settings.id||(['loan','margin','recall'].includes(kind)&&Boolean(selectedLoan))
  const FormFields=settings.component
  const reviewLabel=kind==='locate'&&data.decision==='Reject'?'Review locate rejection':kind==='return'&&data.action==='Reject request'?'Review return rejection':kind==='reservation'?`Review reservation ${data.action==='Release'?'release':data.action==='Extend expiry'?'extension':'amendment'}`:settings.review
  function review(event){
