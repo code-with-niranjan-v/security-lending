@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useOutletContext } from 'react-router-dom'
+import { Link, useNavigate, useOutletContext } from 'react-router-dom'
 import ReferenceTable, {Badge} from '../components/reference/ReferenceTable'
 import ReferenceRegister from '../components/reference/ReferenceRegister'
 import { designBorrowers,borrowerMslas } from '../data/designBorrowers'
@@ -20,13 +20,13 @@ function BorrowerDetails({row}){
 }
 export default function BorrowersPage(){
  const {searchTerm=''}=useOutletContext()
+ const navigate=useNavigate()
  const [expanded,setExpanded]=useState(designBorrowers[0].id)
- const [status,setStatus]=useState(''),[msla,setMsla]=useState(''),[activity,setActivity]=useState(''),[range,setRange]=useState('Last 90 days'),[showAdd,setShowAdd]=useState(false)
+ const [status,setStatus]=useState(''),[msla,setMsla]=useState(''),[activity,setActivity]=useState(''),[range,setRange]=useState('Last 90 days')
  const rows=designBorrowers.filter(row=>(!status||row.status===status)&&(!msla||row.mslas>0)&&(!activity||(activity==='With exceptions'?row.marginCalls+row.recalls+row.settlements>0:row.marginCalls+row.recalls+row.settlements===0))&&(range!=='January 2025'||row.activity.startsWith('Jan'))&&`${row.name} ${row.lei}`.toLowerCase().includes(searchTerm.toLowerCase()))
  function cell(row,key){if(key==='status')return <Badge>{row.status}</Badge>;if(key==='exposure')return <span className="finance-number">{new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(row.exposure)}</span>;if(key==='ratio')return `${row.ratio.toFixed(1)}%`;return row[key]}
- return <section className="ref-page borrower-reference"><header className="ref-heading"><h1>Borrowers &amp; Counterparties</h1><span className="ref-active-count">14 institutions</span><button className="ref-primary" onClick={()=>setShowAdd(true)}>Add borrower</button></header><section className="ref-filters borrower-reference-filters" aria-label="Borrower filters">
+ return <section className="ref-page borrower-reference"><header className="ref-heading"><h1>Borrowers &amp; Counterparties</h1><span className="ref-active-count">14 institutions</span><button className="ref-primary" onClick={()=>navigate('/borrowers/new')}>Add borrower</button></header><section className="ref-filters borrower-reference-filters" aria-label="Borrower filters">
  <label>Status<select aria-label="Status" value={status} onChange={event=>setStatus(event.target.value)}><option value="">All statuses</option><option>Active</option><option>Suspended</option></select></label><label>Type<select aria-label="Type"><option>All types</option></select></label><label>Jurisdiction<select aria-label="Jurisdiction"><option>All jurisdictions</option></select></label><label>MSLA status<select aria-label="MSLA status" value={msla} onChange={event=>setMsla(event.target.value)}><option value="">All</option><option>Active</option></select></label><label>Activity<select aria-label="Activity" value={activity} onChange={event=>setActivity(event.target.value)}><option value="">All activity</option><option>With exceptions</option><option>No exceptions</option></select></label><label>Date range<select aria-label="Date range" value={range} onChange={event=>setRange(event.target.value)}><option>Last 90 days</option><option>All dates</option><option>January 2025</option></select></label></section>
  <ReferenceRegister columns={columns} rows={rows} expanded={expanded} setExpanded={setExpanded} cell={cell} details={row=><BorrowerDetails row={row}/>} className="borrower-reference-table"/>
- {showAdd&&<div className="ref-modal-backdrop"><section className="ref-modal" role="dialog" aria-modal="true" aria-labelledby="add-borrower-title"><h2 id="add-borrower-title">Add borrower</h2><p>This demo displays the reference institutions. Use the Lending Lab registration workflow to create a borrower.</p><button className="ref-primary" onClick={()=>setShowAdd(false)}>Close</button></section></div>}
  </section>
 }

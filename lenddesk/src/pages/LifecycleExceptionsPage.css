@@ -46,3 +46,5 @@
 @media (max-width: 1400px) { .lifecycle-filters { gap: 14px; } .lifecycle-metrics > div { padding: 8px 14px; gap: 12px; } }
 @media (max-width: 760px) { .lifecycle-page .ref-heading { gap: 14px; } .lifecycle-tabs { padding-left: 0; border: 0; width: 100%; } .lifecycle-tabs a { padding: 6px 12px; flex: 1; font-size: 12px; } .lifecycle-metrics { grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 0 10px; } .lifecycle-metrics > div { padding: 8px; gap: 8px; } .lifecycle-metrics > div > span { font-size: 24px; } .lifecycle-metrics small { font-size: 9px; } .lifecycle-metrics strong { font-size: 16px; } .lifecycle-filters select { width: 50%; } }
 .lifecycle-timeline li::after { display: none; }
+
+.lifecycle-workflow-link { margin-left: auto; color: white !important; font-size: 12px !important; }
