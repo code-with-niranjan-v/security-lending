@@ -1,543 +1,335 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { lendDeskApi } from '../api/lendDeskApi'
+import { lenderGet, lendDeskApi } from '../api/lendDeskApi'
 import StatusBadge from '../components/StatusBadge'
 import { inventory } from '../data/inventoryData'
+import { loans } from '../data/loanData'
+import { reservations } from '../data/reservationData'
+import { locateRequests } from '../data/locateData'
 import { useDataSource } from '../hooks/useDataSource'
+import './InventoryPage.css'
 
-const inventoryTone = (status) =>
-  ({ Available: 'good', Tight: 'warn', 'Hard to borrow': 'risk', Restricted: 'neutral' }[status] ?? 'neutral')
+const RESOURCES = ['inventory', 'loans', 'reservations', 'locates', 'borrowers', 'agreements', 'inventory-history']
+const DEMO = { inventory, loans, reservations, locates: locateRequests, borrowers: [], agreements: [], 'inventory-history': [] }
+const COLUMNS = [
+  ['Symbol', 'symbol'], ['ISIN', 'isin'], ['Security name', 'name'], ['Asset class', 'assetClass'],
+  ['Total quantity', 'total'], ['Lent quantity', 'lent'], ['Reserved quantity', 'reserved'],
+  ['Available quantity', 'available'], ['Market price', 'price'], ['Market value', 'marketValue'],
+  ['Utilisation %', 'utilisation'], ['Locate demand', 'demand'], ['Status', 'status']
+]
+const PAGE_SIZE = 20
+const nf = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
 
-const formatNumber = (value) => {
-  if (value === null || value === undefined || value === '') return '—'
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return String(value)
-  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(numeric)
+function numeric(value) {
+  if (value == null || value === '') return null
+  const number = Number(typeof value === 'string' ? value.replace(/[$₹,%\s,]/g, '') : value)
+  return Number.isFinite(number) ? number : null
 }
 
-const formatMoney = (value) => {
-  if (value === null || value === undefined || value === '') return '—'
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return String(value)
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(numeric)
+function quantity(value) {
+  const number = numeric(value)
+  return number === null ? '—' : nf.format(number)
 }
 
-const normaliseLiveInventory = (item) => {
-  const total = Number(item.totalQuantity ?? item.total ?? 0)
-  const onLoan = Number(item.onLoanQuantity ?? item.onLoan ?? 0)
-  const reserved = Number(item.reservedQuantity ?? item.reserved ?? 0)
-  const available = Number(item.availableQuantity ?? item.available ?? 0)
-  const utilisation = total > 0 ? Math.round((onLoan / total) * 100) : 0
-  const status =
-    item.availability ??
-    (available <= 0 ? 'Hard to borrow' : utilisation >= 80 ? 'Tight' : 'Available')
+function money(value, live) {
+  const number = numeric(value)
+  if (number === null) return '—'
+  return new Intl.NumberFormat(live ? 'en-IN' : 'en-US', {
+    style: 'currency', currency: live ? 'INR' : 'USD', maximumFractionDigits: 2
+  }).format(number)
+}
 
-  return {
-    id: String(item.id ?? item.securityId ?? '—'),
-    symbol: item.symbol ?? '—',
-    name: item.name ?? '—',
-    isin: item.isin ?? '—',
-    assetClass: item.assetClass ?? 'US Equity',
-    total: formatNumber(total),
-    onLoan: formatNumber(onLoan),
-    reserved: formatNumber(reserved),
-    available: formatNumber(available),
-    price: formatMoney(item.marketPrice ?? 0),
-    marketValue: formatMoney(item.marketValue ?? 0),
-    rate: item.indicativeRateBps != null ? `${Number(item.indicativeRateBps).toLocaleString('en-US')} bps` : '—',
-    utilisation,
-    status,
-    lots: []
+function time(value) {
+  if (!value) return '—'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('en-GB', {
+    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+  })
+}
+
+async function loadAll(org, resource, signal) {
+  const rows = []
+  let page = 0
+  while (true) {
+    const result = await lenderGet(`/api/v1/organizations/${org}/lenddesk/${resource}?page=${page}&size=200`, signal)
+    const batch = Array.isArray(result) ? result : result?.content
+    if (!Array.isArray(batch)) throw new Error(`Unexpected ${resource} response`)
+    rows.push(...batch)
+    const finished = Number.isInteger(result?.totalPages)
+      ? page + 1 >= result.totalPages
+      : batch.length < 200
+    if (finished || batch.length === 0) return rows
+    page += 1
   }
+}
+
+function normalise(item, live) {
+  const total = numeric(item.totalQuantity ?? item.total) ?? 0
+  const lent = numeric(item.onLoanQuantity ?? item.loanedQuantity ?? item.onLoan) ?? 0
+  const reserved = numeric(item.reservedQuantity ?? item.reserved) ?? 0
+  const price = numeric(item.marketPrice ?? item.price)
+  return {
+    ...item,
+    id: String(item.id), total, lent, reserved, price,
+    available: numeric(item.availableQuantity ?? item.available) ?? Math.max(0, total - lent - reserved),
+    marketValue: live ? numeric(item.marketValue) : price === null ? null : price * total,
+    utilisation: numeric(item.utilisation) ?? (total ? lent / total * 100 : 0),
+    status: item.availability ?? item.status ?? '—',
+    demand: item.locateDemand ?? item.locationDemand ?? '—'
+  }
+}
+
+function related(record, security, live) {
+  return live ? String(record.securityId) === String(security.securityId) : record.symbol === security.symbol
+}
+
+function statusTone(status) {
+  return {
+    Available: 'good', Active: 'good', Tight: 'warn',
+    'Hard to borrow': 'risk', Restricted: 'neutral'
+  }[status] ?? 'neutral'
+}
+
+function SmallTable({ title, columns, rows, error }) {
+  return (
+    <section className="ldi-detail-panel">
+      <h3>{title} <small>({error ? '—' : rows.length})</small></h3>
+      {error ? <p className="ldi-empty" role="status">{error}</p> : (
+        <div className="ldi-mini-scroll">
+          <table className="ldi-mini-table">
+            <thead><tr>{columns.map(column => <th key={column}>{column}</th>)}</tr></thead>
+            <tbody>
+              {rows.map((row, index) => (
+                <tr key={`${row[0]}-${index}`}>
+                  {row.map((cell, column) => <td key={column}>{cell ?? '—'}</td>)}
+                </tr>
+              ))}
+              {!rows.length && <tr><td colSpan={columns.length} className="ldi-empty">No records for this security.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function ExpandedInventory({ security, live, org, data, errors }) {
+  const [detail, setDetail] = useState(null)
+  useEffect(() => {
+    if (!live) return undefined
+    const controller = new AbortController()
+    Promise.allSettled([
+      lenderGet(`/api/v1/securities/${security.securityId}/history`, controller.signal),
+      lendDeskApi.inventoryDetail(org, security.id, controller.signal)
+    ]).then(([history, position]) => {
+      if (controller.signal.aborted) return
+      setDetail({
+        prices: history.status === 'fulfilled' && Array.isArray(history.value) ? history.value : [],
+        error: history.status === 'rejected' ? history.reason.message : '',
+        lots: position.status === 'fulfilled' ? position.value?.lots ?? [] : [],
+        lotError: position.status === 'rejected' ? position.reason.message : ''
+      })
+    })
+    return () => controller.abort()
+  }, [live, org, security.id, security.securityId])
+
+  const select = resource => (data[resource] ?? []).filter(row => related(row, security, live))
+  const borrower = row => live
+    ? data.borrowers?.find(item => String(item.id) === String(row.connectionId))?.name ?? `Connection ${row.connectionId}`
+    : row.borrower
+  const feeRate = row => {
+    if (!live) return row.rate ?? '—'
+    const agreement = data.agreements?.find(item => String(item.id) === String(row.mslaId))
+    return agreement?.feeRate == null ? '—' : `${(Number(agreement.feeRate) * 100).toFixed(2)}%`
+  }
+  const activeLoans = select('loans').filter(row => String(row.status).toUpperCase() === 'ACTIVE')
+  const movements = live
+    ? (data['inventory-history'] ?? []).filter(row => String(row.inventoryId) === security.id)
+    : security.inventoryMovements ?? []
+  const prices = live
+    ? (detail?.prices ?? []).filter(row => numeric(row.close) !== null && Number.isFinite(Date.parse(row.tradedDateTimestamp)))
+      .sort((a, b) => Date.parse(a.tradedDateTimestamp) - Date.parse(b.tradedDateTimestamp)).slice(-120).map(row => Number(row.close))
+    : security.price === null ? [] : [0.91, 0.918, 0.914, 0.925, 0.94, 0.934, 0.95, 0.963, 0.958, 0.976, 0.971, 0.988, 1].map(ratio => security.price * ratio)
+  const low = prices.length ? Math.min(...prices) : 0
+  const range = prices.length ? Math.max(...prices) - low || 1 : 1
+  const points = prices.map((price, i) => `${8 + i / Math.max(1, prices.length - 1) * 244},${76 - (price - low) / range * 56}`).join(' ')
+  const lots = live ? detail?.lots ?? [] : security.lots ?? []
+
+  return (
+    <div className="ldi-expanded">
+      <div className="ldi-detail-grid">
+        <section className="ldi-detail-panel ldi-chart-panel">
+          <h3>{security.symbol} — price history</h3>
+          <div className="ldi-chart-legend"><span>━ Price ({live ? 'INR' : 'USD'})</span><small>{live ? 'Latest 120 candles' : 'Illustrative demo series'}</small></div>
+          {live && !detail ? <p className="ldi-empty">Loading price history…</p> : detail?.error ? (
+            <p className="ldi-empty" role="status">{detail.error}</p>
+          ) : prices.length < 2 ? <p className="ldi-empty">Insufficient price history.</p> : (
+            <>
+              <svg className="ldi-price-svg" viewBox="0 0 270 100" role="img" aria-label={`${security.symbol} price history`}>
+                {[20, 48, 76].map(y => <line key={y} x1="8" x2="258" y1={y} y2={y} className="ldi-grid-line" />)}
+                <polyline points={points} className="ldi-price-line" />
+                <circle cx="252" cy={76 - (prices.at(-1) - low) / range * 56} r="3" />
+              </svg>
+              <div className="ldi-chart-range"><span>Low {money(low, live)}</span><strong>{money(prices.at(-1), live)}</strong></div>
+            </>
+          )}
+        </section>
+        <SmallTable title="Active loans" columns={['Loan ID', 'Borrower', 'Quantity', 'Rate']} error={errors.loans}
+          rows={activeLoans.map(row => [row.id, borrower(row), quantity(row.outstandingQuantity ?? row.outstanding ?? row.quantity), feeRate(row)])} />
+        <SmallTable title="Reservations" columns={['Reservation', 'Borrower', 'Quantity', 'Expiry']} error={errors.reservations}
+          rows={select('reservations').map(row => [row.id, borrower(row), quantity(row.remainingQuantity ?? row.reserved ?? row.quantity), live ? time(row.expiresAt) : row.expires])} />
+        <SmallTable title="Locate requests" columns={['Locate ID', 'Borrower', 'Quantity', 'Status']} error={errors.locates}
+          rows={select('locates').map(row => [row.id, borrower(row), quantity(row.quantity ?? row.requested), row.status])} />
+        <SmallTable title="Inventory movements" columns={['Time', 'Type', 'Quantity']} error={errors['inventory-history']}
+          rows={movements.map(row => [live ? time(row.createdAt) : row.date, row.type, quantity(row.quantity)])} />
+      </div>
+      <details className="ldi-custody">
+        <summary>Custody lots{live && !detail ? ' · loading…' : ` · ${lots.length} sources`}</summary>
+        <SmallTable title="Custody balances" columns={['Lot ID', 'Custodian account', 'Settled balance', 'On loan', 'Available', 'Availability']} error={detail?.lotError}
+          rows={lots.map(lot => [lot.lotId ?? lot[0], lot.custodianAccount ?? lot[1], quantity(lot.settledBalance ?? lot[2]), quantity(lot.onLoan ?? lot[3]), quantity(lot.availableToLend ?? lot[4]), lot.availability ?? lot[5]])} />
+      </details>
+    </div>
+  )
 }
 
 export default function InventoryPage() {
-  const { searchTerm, dataMode } = useOutletContext()
-  const { organizationId } = useDataSource()
-  const [availability, setAvailability] = useState('All availability')
-  const [selectedId, setSelectedId] = useState('INV-00074')
-  const [expandedId, setExpandedId] = useState('INV-00074')
-  const [liveInventory, setLiveInventory] = useState([])
-  const [expandedInventory, setExpandedInventory] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [demoTab, setDemoTab] = useState('price')
-
-  const demoTabs = [
-    { key: 'price', label: 'Price chart' },
-    { key: 'loans', label: 'Active loans' },
-    { key: 'reservations', label: 'Reservations' },
-    { key: 'locates', label: 'Locate request' },
-    { key: 'movements', label: 'Inventory movements' }
-  ]
+  const { searchTerm = '' } = useOutletContext()
+  const { mode, organizationId, refreshKey, refresh } = useDataSource()
+  const live = mode === 'live'
+  const scope = `${mode}:${organizationId}:${refreshKey}`
+  const [request, setRequest] = useState({ scope: '', data: {}, errors: {} })
+  const [filters, setFilters] = useState({ search: '', assetClass: '', availability: '', borrower: '', utilisation: '' })
+  const [sort, setSort] = useState({ key: 'symbol', direction: 1 })
+  const [page, setPage] = useState(0)
+  const [expanded, setExpanded] = useState({ scope, id: live ? null : 'INV-00074' })
 
   useEffect(() => {
-    if (dataMode !== 'live') return undefined
-
+    if (!live) return undefined
     const controller = new AbortController()
-    setLoading(true)
-    setError('')
-
-    lendDeskApi.inventory(organizationId, controller.signal)
-      .then((rows) => {
-        const items = Array.isArray(rows) ? rows : Array.isArray(rows?.content) ? rows.content : []
-        setLiveInventory(items.map(normaliseLiveInventory))
+    Promise.allSettled(RESOURCES.map(resource => loadAll(organizationId, resource, controller.signal))).then(results => {
+      if (controller.signal.aborted) return
+      const data = {}
+      const errors = {}
+      results.forEach((result, index) => {
+        const resource = RESOURCES[index]
+        data[resource] = result.status === 'fulfilled' ? result.value : []
+        if (result.status === 'rejected') errors[resource] = result.reason.message
       })
-      .catch((requestError) => {
-        if (requestError.name !== 'AbortError') setError(requestError.message)
-      })
-      .finally(() => setLoading(false))
-
+      setRequest({ scope, data, errors })
+    })
     return () => controller.abort()
-  }, [dataMode, organizationId])
+  }, [live, organizationId, scope])
 
-  useEffect(() => {
-    if (dataMode !== 'live' || !expandedId) {
-      setExpandedInventory(null)
-      return undefined
+  const loading = live && request.scope !== scope
+  const data = live ? request.scope === scope ? request.data : {} : DEMO
+  const errors = live && request.scope === scope ? request.errors : {}
+  const sourceRows = (data.inventory ?? []).map(row => normalise(row, live))
+  const activity = [...(data.loans ?? []), ...(data.reservations ?? []), ...(data.locates ?? [])]
+  const borrowers = live ? (data.borrowers ?? []).map(row => ({ id: String(row.id), name: row.name }))
+    : [...new Set(activity.map(row => row.borrower).filter(Boolean))].map(name => ({ id: name, name }))
+  const rows = sourceRows.filter(security => {
+    const text = `${security.symbol} ${security.isin} ${security.name}`.toLowerCase()
+    const borrowerMatches = !filters.borrower || activity.some(row => related(row, security, live) && String(live ? row.connectionId : row.borrower) === filters.borrower)
+    const utilisationMatches = !filters.utilisation ||
+      (filters.utilisation === 'high' && security.utilisation >= 80) ||
+      (filters.utilisation === 'medium' && security.utilisation >= 50 && security.utilisation < 80) ||
+      (filters.utilisation === 'low' && security.utilisation < 50)
+    return text.includes(filters.search.trim().toLowerCase()) && text.includes(searchTerm.trim().toLowerCase()) &&
+      (!filters.assetClass || security.assetClass === filters.assetClass) &&
+      (!filters.availability || security.status === filters.availability) && borrowerMatches && utilisationMatches
+  }).sort((a, b) => {
+    const left = a[sort.key]
+    const right = b[sort.key]
+    if (left == null) return right == null ? 0 : 1
+    if (right == null) return -1
+    return (typeof left === 'number' ? left - right : String(left).localeCompare(String(right))) * sort.direction
+  })
+  const totals = sourceRows.reduce((result, row) => ({ total: result.total + row.total, lent: result.lent + row.lent, reserved: result.reserved + row.reserved, available: result.available + row.available }), { total: 0, lent: 0, reserved: 0, available: 0 })
+  const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
+  const currentPage = Math.min(page, pages - 1)
+  const visible = rows.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE)
+  const expandedId = expanded.scope === scope ? expanded.id : null
+
+  function changeFilter(key, value) {
+    setFilters(current => ({ ...current, [key]: value }))
+    setPage(0)
+  }
+  function toggleRow(id) {
+    setExpanded({ scope, id: expandedId === id ? null : id })
+  }
+  function sortBy(key) {
+    setSort(current => ({ key, direction: current.key === key ? -current.direction : 1 }))
+    setPage(0)
+  }
+  function exportRows() {
+    const keys = COLUMNS.map(([, key]) => key)
+    const escape = value => {
+      const text = String(value ?? '')
+      const safe = typeof value === 'string' && /^\s*[=+@-]/.test(text) ? `'${text}` : text
+      return `"${safe.replaceAll('"', '""')}"`
     }
-
-    const controller = new AbortController()
-    lendDeskApi.inventoryDetail(organizationId, expandedId, controller.signal)
-      .then((detail) => {
-        const inventoryItem = detail?.inventory ?? detail ?? {}
-        const lots = Array.isArray(detail?.lots) ? detail.lots : []
-        const normalized = normaliseLiveInventory(inventoryItem)
-        const expandedLots = lots.map((lot) => ({
-          lotId: lot.lotId ?? lot.id ?? '—',
-          custodianAccount: lot.custodianAccount ?? lot.custodian ?? '—',
-          settledBalance: formatNumber(lot.settledBalance ?? lot.settled ?? 0),
-          onLoan: formatNumber(lot.onLoan ?? 0),
-          availableToLend: formatNumber(lot.availableToLend ?? lot.available ?? 0),
-          availability: lot.availability ?? normalized.status
-        }))
-        setExpandedInventory({ ...normalized, lots: expandedLots })
-      })
-      .catch((requestError) => {
-        if (requestError.name !== 'AbortError') setExpandedInventory(null)
-      })
-
-    return () => controller.abort()
-  }, [dataMode, expandedId, organizationId])
-
-  const sourceRows = dataMode === 'live' ? liveInventory : inventory
-  const rows = useMemo(
-    () =>
-      sourceRows.filter(
-        (security) =>
-          (availability === 'All availability' || security.status === availability) &&
-          Object.values(security).join(' ').toLowerCase().includes(searchTerm.toLowerCase())
-      ),
-    [sourceRows, availability, searchTerm]
-  )
-
-  function selectSecurity(id) {
-    setSelectedId(id)
-    setExpandedId((current) => (current === id ? null : id))
+    const csv = [keys.map(escape).join(','), ...rows.map(row => keys.map(key => escape(row[key])).join(','))].join('\r\n')
+    const url = URL.createObjectURL(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'lenddesk-inventory.csv'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
-  const displayRows = rows.length ? rows : []
-  const activeSecurity = dataMode === 'live' ? expandedInventory : (displayRows.find((security) => security.id === expandedId) ?? null)
-
-  const renderDemoExpanded = (security) => (
-    <div className="inventory-detail demo-inventory-detail">
-      <div className="inventory-detail-header">
-        <div className="inventory-detail-title">
-          <small>Custody lots for {security.symbol}</small>
-          <h3>{security.symbol}</h3>
-        </div>
-
-        <div className="inventory-detail-summary">
-          <div>
-            <span>Location demand</span>
-            <strong>{security.locationDemand || 'High'}</strong>
-          </div>
-          <div>
-            <span>Available</span>
-            <strong>{security.available}</strong>
-          </div>
-          <div>
-            <span>On loan</span>
-            <strong>{security.onLoan}</strong>
-          </div>
-        </div>
-      </div>
-
-      <div className="inventory-detail-tabs">
-        {demoTabs.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            className={demoTab === tab.key ? 'inventory-detail-tab is-active' : 'inventory-detail-tab'}
-            onClick={() => setDemoTab(tab.key)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="inventory-detail-body">
-  {demoTab === 'price' && (
-  <div className="inventory-price-panel">
-    <div className="inventory-price-header">
-      <div>
-        <strong>{security.symbol}</strong>
-        <small>{security.name}</small>
-      </div>
-      <div className="inventory-price-spot">
-        <span>Spot</span>
-        <b>{security.price}</b>
-      </div>
-    </div>
-
-    <div className="inventory-price-chart" aria-label="Price chart">
-      <svg viewBox="0 0 720 180" preserveAspectRatio="none" className="inventory-price-svg" role="img">
-        <defs>
-          <linearGradient id="priceFill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="rgba(109,92,231,0.20)" />
-            <stop offset="100%" stopColor="rgba(109,92,231,0.02)" />
-          </linearGradient>
-        </defs>
-
-        {[0, 1, 2, 3].map((line) => (
-          <line
-            key={line}
-            x1="0"
-            x2="720"
-            y1={25 + line * 40}
-            y2={25 + line * 40}
-            stroke="rgba(109,92,231,0.12)"
-            strokeWidth="1"
-          />
-        ))}
-
-        <path
-          d="M0,120 C55,118, 80,86, 120,110 S192,122, 240,100 S330,62, 370,82 S445,110, 500,98 S585,66, 620,84 S680,58, 720,48 L720,180 L0,180 Z"
-          fill="url(#priceFill)"
-        />
-
-        <path
-          d="M0,120 C55,118, 80,86, 120,110 S192,122, 240,100 S330,62, 370,82 S445,110, 500,98 S585,66, 620,84 S680,58, 720,48"
-          fill="none"
-          stroke="#6d5ce7"
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-
-        <path
-          d="M0,138 C55,140, 95,134, 145,122 S215,118, 260,128 S348,130, 410,102 S535,124, 585,118 S646,95, 720,98"
-          fill="none"
-          stroke="rgba(109,92,231,0.42)"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </div>
-
-    <div className="inventory-price-labels">
-      <span>Dec 29</span>
-      <span>Jan 02</span>
-      <span>Jan 08</span>
-      <span>Jan 12</span>
-      <span>Jan 18</span>
-    </div>
-  </div>
-)}
-        {demoTab === 'loans' && (
-          <table className="inventory-detail-table">
-            <thead>
-              <tr>
-                <th>Loan ID</th>
-                <th>Borrower</th>
-                <th>Quantity</th>
-                <th>Rate</th>
-                <th>Reservation ID</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(security.activeLoans ?? []).map((loan) => (
-                <tr key={loan.loanId}>
-                  <td><a>{loan.loanId}</a></td>
-                  <td>{loan.borrower}</td>
-                  <td className="num">{loan.quantity}</td>
-                  <td>{loan.rate}</td>
-                  <td>{loan.reservationId}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-
-        {demoTab === 'reservations' && (
-          <table className="inventory-detail-table">
-            <thead>
-              <tr>
-                <th>Reservation ID</th>
-                <th>Borrower</th>
-                <th>Quantity</th>
-                <th>Expiry</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(security.reservations ?? []).map((reservation) => (
-                <tr key={reservation.reservationId}>
-                  <td><a>{reservation.reservationId}</a></td>
-                  <td>{reservation.borrower}</td>
-                  <td className="num">{reservation.quantity}</td>
-                  <td>{reservation.expiry}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-
-        {demoTab === 'locates' && (
-          <table className="inventory-detail-table">
-            <thead>
-              <tr>
-                <th>Locate ID</th>
-                <th>Borrower</th>
-                <th>Quantity</th>
-                <th>Age</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(security.locateRequests ?? []).map((locate) => (
-                <tr key={locate.locateId}>
-                  <td><a>{locate.locateId}</a></td>
-                  <td>{locate.borrower}</td>
-                  <td className="num">{locate.quantity}</td>
-                  <td>{locate.age}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-
-        {demoTab === 'movements' && (
-          <table className="inventory-detail-table">
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Type</th>
-                <th>Quantity</th>
-                <th>Balance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(security.inventoryMovements ?? []).map((movement, index) => (
-                <tr key={`${movement.date}-${index}`}>
-                  <td>{movement.date}</td>
-                  <td>{movement.type}</td>
-                  <td className="num">{movement.quantity}</td>
-                  <td className="num">{movement.balance}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </div>
-  )
-
-  const renderLiveExpanded = (security) => (
-    <div className="child-table inventory-child">
-      <div>
-        <b>Custody lots for {security.symbol}</b>
-        <span>{(activeSecurity?.lots ?? security.lots ?? []).length} sources · {security.available} shares available</span>
-      </div>
-
-      {(activeSecurity?.lots ?? security.lots ?? []).length ? (
-        <table>
-          <thead>
-            <tr>
-              <th>Lot ID</th>
-              <th>Custodian account</th>
-              <th>Settled balance</th>
-              <th>On loan</th>
-              <th>Available to lend</th>
-              <th>Availability</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(activeSecurity?.lots ?? security.lots ?? []).map((lot) => (
-              <tr key={lot.lotId ?? lot[0]}>
-                <td><a>{lot.lotId ?? lot[0]}</a></td>
-                <td>{lot.custodianAccount ?? lot[1]}</td>
-                <td className="num"><b>{lot.settledBalance ?? lot[2]}</b></td>
-                <td className="num">{lot.onLoan ?? lot[3]}</td>
-                <td className="num">{lot.availableToLend ?? lot[4]}</td>
-                <td>
-                  <StatusBadge tone={inventoryTone(lot.availability ?? lot[5])}>
-                    {lot.availability ?? lot[5]}
-                  </StatusBadge>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <div className="empty-state">No custody lots available.</div>
-      )}
-    </div>
-  )
-
   return (
-    <>
-      <section className="heading inventory-heading">
-        <h1>Lendable Inventory</h1>
-
-        <div className="inventory-summary-cards">
-          <span className="inventory-summary-card"><small>Gross inventory</small><b>$4.76B</b></span>
-          <span className="inventory-summary-card"><small>Available to lend</small><b>$1.89B</b></span>
-          <span className="inventory-summary-card"><small>On loan</small><b>$2.77B</b></span>
-          <span className="inventory-summary-card critical"><small>Hard-to-borrow</small><b>2</b></span>
+    <section className="ld-inventory">
+      <header className="ldi-heading">
+        <div><h1>Securities Inventory</h1><small>{live ? 'Live lender inventory' : 'Demo inventory'}</small></div>
+        <div className="ldi-summary">
+          {[['Total inventory', totals.total], ['Lent', totals.lent], ['Reserved', totals.reserved], ['Available', totals.available]].map(([label, value]) => (
+            <div key={label}><span>{label}</span><strong>{loading || errors.inventory ? '—' : quantity(value)}</strong></div>
+          ))}
         </div>
-
-        <button className="primary-action" type="button">Import inventory</button>
-      </section>
-
-      <section className="inventory-filters panel">
-        <div>
-          <label>
-            Security
-            <input placeholder="Search symbol, ISIN or security name" />
-          </label>
-
-          <label>
-            Asset class
-            <select>
-              <option>All asset classes</option>
-              <option>US Equity</option>
-              <option>US Treasury</option>
-              <option>ETF</option>
-            </select>
-          </label>
-
-          <label>
-            Availability
-            <select value={availability} onChange={(event) => setAvailability(event.target.value)}>
-              <option>All availability</option>
-              <option>Available</option>
-              <option>Tight</option>
-              <option>Hard to borrow</option>
-            </select>
-          </label>
-
-          <label>
-            Custodian
-            <select>
-              <option>All custodians</option>
-              <option>DTC 2191</option>
-              <option>State Street 447</option>
-              <option>BNY Mellon 008</option>
-            </select>
-          </label>
+      </header>
+      <div className="ldi-filters">
+        <label>Asset class<select value={filters.assetClass} onChange={e => changeFilter('assetClass', e.target.value)}><option value="">All asset classes</option>{[...new Set(sourceRows.map(row => row.assetClass))].map(value => <option key={value}>{value}</option>)}</select></label>
+        <label>Availability<select value={filters.availability} onChange={e => changeFilter('availability', e.target.value)}><option value="">All</option>{[...new Set(sourceRows.map(row => row.status))].map(value => <option key={value}>{value}</option>)}</select></label>
+        <label>Borrower<select value={filters.borrower} disabled={Boolean(errors.borrowers)} onChange={e => changeFilter('borrower', e.target.value)}><option value="">All borrowers</option>{borrowers.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
+        <label>Utilisation<select value={filters.utilisation} onChange={e => changeFilter('utilisation', e.target.value)}><option value="">All</option><option value="high">80% and above</option><option value="medium">50%–79%</option><option value="low">Below 50%</option></select></label>
+        <label className="ldi-search">Security<input value={filters.search} placeholder="Search symbol, ISIN or security name…" onChange={e => changeFilter('search', e.target.value)} /></label>
+        <button type="button" className="ldi-text-button" onClick={() => { setFilters({ search: '', assetClass: '', availability: '', borrower: '', utilisation: '' }); setPage(0) }}>Clear</button>
+        <button type="button" className="ldi-button" onClick={exportRows}>Export</button>
+        <button type="button" className="ldi-button" disabled={loading} onClick={refresh} aria-label="Refresh inventory">↻</button>
+      </div>
+      {errors.inventory && <div className="ldi-error" role="alert">Could not load inventory. {errors.inventory}</div>}
+      {Object.keys(errors).some(key => key !== 'inventory') && <div className="ldi-warning" role="status">Some related activity is unavailable. Expanded panels show the affected resources.</div>}
+      <div className="ldi-register">
+        <div className="ldi-table-scroll">
+          <table className="ldi-main-table">
+            <thead><tr><th className="ldi-expander-column" />{COLUMNS.map(([label, key]) => (
+              <th key={key} aria-sort={sort.key === key ? sort.direction === 1 ? 'ascending' : 'descending' : 'none'}><button type="button" className="ldi-sort" onClick={() => sortBy(key)} aria-label={`Sort by ${label}`}>{label}<span aria-hidden="true">{sort.key === key ? sort.direction === 1 ? '↑' : '↓' : '↕'}</span></button></th>
+            ))}</tr></thead>
+            <tbody>
+              {loading && <tr><td colSpan={14} className="ldi-empty">Loading inventory…</td></tr>}
+              {!loading && !visible.length && <tr><td colSpan={14} className="ldi-empty">{errors.inventory ? 'Inventory is unavailable.' : 'No securities match the current filters.'}</td></tr>}
+              {!loading && visible.map(security => {
+                const open = expandedId === security.id
+                return <Fragment key={security.id}>
+                  <tr className={open ? 'ldi-security is-expanded' : 'ldi-security'} onClick={() => toggleRow(security.id)}>
+                    <td><button type="button" className="ldi-expander" aria-expanded={open} aria-controls={open ? `inventory-detail-${security.id}` : undefined} aria-label={`${open ? 'Collapse' : 'Expand'} ${security.symbol}`} onClick={e => { e.stopPropagation(); toggleRow(security.id) }}>{open ? '⌄' : '›'}</button></td>
+                    <td className="ldi-symbol">{security.symbol}</td><td className="ldi-isin">{security.isin}</td><td className="ldi-name" title={security.name}>{security.name}</td><td><span className="ldi-asset">{security.assetClass}</span></td>
+                    <td className="ldi-number">{quantity(security.total)}</td><td className="ldi-number">{quantity(security.lent)}</td><td className="ldi-number">{quantity(security.reserved)}</td><td className="ldi-number"><strong>{quantity(security.available)}</strong></td>
+                    <td className="ldi-number">{money(security.price, live)}</td><td className="ldi-number">{money(security.marketValue, live)}</td><td className="ldi-number">{security.utilisation.toFixed(1)}%</td><td className="ldi-demand">{security.demand}</td><td><StatusBadge tone={statusTone(security.status)}>{security.status}</StatusBadge></td>
+                  </tr>
+                  {open && <tr className="ldi-child-row"><td colSpan={14} id={`inventory-detail-${security.id}`}><ExpandedInventory key={`${scope}:${security.id}`} security={security} live={live} org={organizationId} data={data} errors={errors} /></td></tr>}
+                </Fragment>
+              })}
+            </tbody>
+          </table>
         </div>
-
-        <div>
-          <button className="link" type="button" onClick={() => setAvailability('All availability')}>
-            Clear filters
-          </button>
-          <button className="outline-action" type="button">Export availability</button>
-        </div>
-      </section>
-
-      <section className="inventory-workspace">
-        <article className="panel inventory-register">
-          <div className="panel-title">
-            <h2>
-              Availability register
-              <small>{loading ? 'loading live data…' : `${displayRows.length} securities shown`}</small>
-            </h2>
-            <small>
-              {error ? `Live API unavailable: ${error}` : 'Expand a security to view custody lots and lendable balances'}
-            </small>
-          </div>
-
-          <div className="scroll">
-            <table className={dataMode === 'live' ? 'live-mode-table' : ''}>
-              <thead>
-                <tr>
-                  <th />
-                  <th>Security</th>
-                  <th>ISIN</th>
-                  <th>Asset class</th>
-                  <th>Total inventory</th>
-                  <th>On loan</th>
-                  <th>Reserved</th>
-                  <th>Available</th>
-                  <th>Availability</th>
-                  <th>Market price</th>
-                  <th>Market value</th>
-                  <th>Indicative rate</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {displayRows.map((security) => (
-                  <Fragment key={security.id}>
-                    <tr className={selectedId === security.id ? 'selected' : ''} onClick={() => selectSecurity(security.id)}>
-                      <td>
-                        <button
-                          className="row-expander"
-                          type="button"
-                          aria-label={`${expandedId === security.id ? 'Collapse' : 'Expand'} ${security.symbol}`}
-                        >
-                          {expandedId === security.id ? '⌄' : '›'}
-                        </button>
-                      </td>
-
-                      <td>
-                        <a>{security.symbol}</a>
-                        <small className="table-subline">{security.name}</small>
-                      </td>
-
-                      <td className="mono">{security.isin}</td>
-                      <td>{security.assetClass}</td>
-                      <td className="num">{security.total}</td>
-                      <td className="num">{security.onLoan}</td>
-                      <td className="num">{security.reserved}</td>
-                      <td className="num"><b>{security.available}</b></td>
-
-                      <td>
-                        <div className="utilisation">
-                          <span><i style={{ width: `${security.utilisation}%` }} /></span>
-                          <b>{security.utilisation}%</b>
-                        </div>
-                      </td>
-
-                      <td className="num">{security.price}</td>
-                      <td className="num">{security.marketValue}</td>
-                      <td>{security.rate}</td>
-                      <td>
-                        <StatusBadge tone={inventoryTone(security.status)}>{security.status}</StatusBadge>
-                      </td>
-                    </tr>
-
-                    {expandedId === security.id && (
-                      <tr className="child-row">
-                        <td colSpan="13">
-                          {dataMode === 'live' ? renderLiveExpanded(security) : renderDemoExpanded(security)}
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <footer>
-            {dataMode === 'live'
-              ? 'Live lender inventory view'
-              : `Showing ${displayRows.length} of 1,284 lendable securities · Availability equals settled inventory less outstanding loans and active reservations`}
-          </footer>
-        </article>
-      </section>
-    </>
+        <footer className="ldi-footer">
+          <span>{loading ? 'Loading…' : `${rows.length} matching securities · ${sourceRows.length} loaded`}</span>
+          <div className="ldi-pagination"><button type="button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Previous</button><span>Page {currentPage + 1} of {pages}</span><button type="button" disabled={currentPage + 1 >= pages} onClick={() => setPage(currentPage + 1)}>Next</button></div>
+        </footer>
+      </div>
+    </section>
   )
 }

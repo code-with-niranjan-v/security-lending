@@ -1,0 +1,87 @@
+.ld-inventory {
+  --ldi-purple: #4f39df;
+  --ldi-text: #171338;
+  --ldi-muted: #716b8c;
+  --ldi-border: #e0dafb;
+  padding: 0 12px 18px;
+  color: var(--ldi-text);
+  font-size: 12px;
+}
+.ld-inventory button, .ld-inventory input, .ld-inventory select { font: inherit; }
+.ld-inventory button:focus-visible, .ld-inventory input:focus-visible, .ld-inventory select:focus-visible, .ld-inventory summary:focus-visible { outline: 2px solid var(--ldi-purple); outline-offset: 2px; }
+.ld-inventory .ldi-heading { display: flex; align-items: center; gap: 32px; min-height: 82px; padding: 12px 8px; }
+.ld-inventory .ldi-heading h1 { margin: 0; font-size: 26px; font-weight: 750; letter-spacing: -.8px; white-space: nowrap; }
+.ld-inventory .ldi-heading small { display: block; margin-top: 4px; color: var(--ldi-muted); font-size: 11px; }
+.ld-inventory .ldi-summary { display: grid; grid-template-columns: repeat(4, minmax(125px, 1fr)); flex: 1; }
+.ld-inventory .ldi-summary > div { display: grid; gap: 5px; padding: 0 24px; border-left: 1px solid #c8bffa; }
+.ld-inventory .ldi-summary strong { font-size: 19px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.ld-inventory .ldi-filters { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 9px; padding: 9px; border: 1px solid var(--ldi-border); border-radius: 7px; background: #faf8ff; }
+.ld-inventory .ldi-filters label { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 650; white-space: nowrap; }
+.ld-inventory .ldi-filters input, .ld-inventory .ldi-filters select { height: 32px; min-width: 105px; padding: 0 9px; border: 1px solid #d9d1fa; border-radius: 5px; background: #fff; color: var(--ldi-text); }
+.ld-inventory .ldi-search { flex: 1; }
+.ld-inventory .ldi-search input { width: 100%; min-width: 220px; }
+.ld-inventory .ldi-button, .ld-inventory .ldi-pagination button { min-height: 31px; padding: 0 10px; border: 1px solid #d9d1fa; border-radius: 4px; background: #fff; color: var(--ldi-purple); font-weight: 650; }
+.ld-inventory button:disabled { cursor: not-allowed; opacity: .5; }
+.ld-inventory .ldi-text-button { padding: 6px; border: 0; background: transparent; color: var(--ldi-purple); font-size: 11px; }
+.ld-inventory .ldi-register { overflow: hidden; border: 1px solid var(--ldi-border); border-radius: 7px; background: #fff; }
+.ld-inventory .ldi-table-scroll { overflow-x: auto; }
+.ld-inventory .ldi-main-table { width: 100%; min-width: 1510px; border-collapse: collapse; table-layout: auto; white-space: nowrap; }
+.ld-inventory .ldi-main-table > thead > tr > th { height: 37px; padding: 0 8px; border-bottom: 1px solid var(--ldi-border); background: #f5f2ff; color: var(--ldi-text); font-size: 11px; font-weight: 650; letter-spacing: -.2px; text-transform: none; }
+.ld-inventory .ldi-sort { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: transparent; color: inherit; white-space: nowrap; }
+.ld-inventory .ldi-sort span { color: var(--ldi-purple); font-size: 12px; }
+.ld-inventory .ldi-expander-column { width: 28px; }
+.ld-inventory .ldi-main-table > tbody > .ldi-security > td { height: 36px; padding: 6px 8px; border-top: 1px solid #ebe6fb; background: transparent; font-size: 11px; vertical-align: middle; }
+.ld-inventory .ldi-security { cursor: pointer; }
+.ld-inventory .ldi-security:hover { background: #f6f3ff; }
+.ld-inventory .ldi-security.is-expanded { background: #eeeaff; }
+.ld-inventory .ldi-expander { display: grid; place-items: center; width: 22px; height: 23px; padding: 0; border: 0; background: transparent; color: var(--ldi-purple); font-size: 22px; line-height: 1; }
+.ld-inventory .ldi-symbol { color: var(--ldi-purple); font-weight: 750; }
+.ld-inventory .ldi-isin { font-variant-numeric: tabular-nums; }
+.ld-inventory .ldi-name { max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
+.ld-inventory .ldi-number { text-align: right; font-variant-numeric: tabular-nums; }
+.ld-inventory .ldi-demand { color: var(--ldi-purple); font-weight: 650; }
+.ld-inventory .ldi-asset { display: inline-block; padding: 3px 7px; border-radius: 4px; background: #e8e2ff; color: #33227c; font-size: 10px; font-weight: 650; }
+.ld-inventory .badge { min-height: 19px; border-radius: 4px; font-size: 10px; }
+.ld-inventory .ldi-child-row, .ld-inventory .ldi-child-row:hover { background: #faf8ff; }
+.ld-inventory .ldi-main-table > tbody > .ldi-child-row > td { padding: 0; border-top: 0; white-space: normal; }
+.ld-inventory .ldi-expanded { margin: 0 5px 8px; padding: 10px 8px 8px; border: 1px solid #ddd5ff; border-top: 0; border-radius: 0 0 6px 6px; background: #f8f6ff; }
+.ld-inventory .ldi-detail-grid { display: grid; grid-template-columns: minmax(250px, 1.1fr) repeat(4, minmax(225px, 1fr)); align-items: start; }
+.ld-inventory .ldi-detail-panel { min-width: 0; min-height: 158px; padding: 0 10px; border-left: 1px solid #d6cdfa; }
+.ld-inventory .ldi-detail-panel:first-child { border-left: 0; }
+.ld-inventory .ldi-detail-panel h3 { display: flex; align-items: center; gap: 5px; margin: 0 0 9px; font-size: 12px; font-weight: 750; letter-spacing: -.3px; }
+.ld-inventory .ldi-detail-panel h3 small { color: var(--ldi-muted); font-size: 10px; }
+.ld-inventory .ldi-mini-scroll { max-height: 230px; overflow: auto; }
+.ld-inventory .ldi-mini-table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+.ld-inventory .ldi-mini-table th { position: sticky; top: 0; height: 25px; padding: 0 5px 5px; border-bottom: 1px solid #e1dafa; background: #f8f6ff; color: var(--ldi-text); font-size: 9px; letter-spacing: -.2px; text-align: left; text-transform: none; }
+.ld-inventory .ldi-mini-table td { height: 25px; padding: 4px 5px; border-top: 1px solid #eee8ff; color: var(--ldi-text); font-size: 10px; font-variant-numeric: tabular-nums; }
+.ld-inventory .ldi-mini-table td:first-child { color: var(--ldi-purple); font-weight: 650; }
+.ld-inventory .ldi-mini-table tbody tr:hover { background: #eee9ff; }
+.ld-inventory .ldi-chart-legend, .ld-inventory .ldi-chart-range { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--ldi-muted); font-size: 9px; }
+.ld-inventory .ldi-chart-legend small { font-size: 9px; }
+.ld-inventory .ldi-price-svg { display: block; width: 100%; height: 103px; margin-top: 5px; overflow: visible; fill: #5b46ed; }
+.ld-inventory .ldi-grid-line { stroke: #e5defa; stroke-width: 1; }
+.ld-inventory .ldi-price-line { fill: none; stroke: #5b46ed; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ld-inventory .ldi-chart-range strong { color: var(--ldi-purple); }
+.ld-inventory .ldi-custody { margin-top: 8px; padding-top: 7px; border-top: 1px solid #e1dafa; }
+.ld-inventory .ldi-custody summary { width: fit-content; padding: 3px 5px; color: var(--ldi-purple); font-size: 10px; font-weight: 650; cursor: pointer; }
+.ld-inventory .ldi-custody > .ldi-detail-panel { margin-top: 10px; border-left: 0; }
+.ld-inventory .ldi-empty { padding: 18px 10px; color: var(--ldi-muted); font-size: 11px; text-align: left; white-space: normal; }
+.ld-inventory .ldi-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-top: 1px solid var(--ldi-border); color: var(--ldi-muted); font-size: 11px; }
+.ld-inventory .ldi-pagination { display: flex; align-items: center; gap: 12px; }
+.ld-inventory .ldi-pagination button { min-height: 27px; font-size: 11px; }
+.ld-inventory .ldi-error, .ld-inventory .ldi-warning { margin-bottom: 9px; padding: 10px 12px; border: 1px solid #ecc5cc; border-radius: 5px; background: #fff4f5; color: #942e3a; font-size: 12px; }
+.ld-inventory .ldi-warning { border-color: #eadbad; background: #fff9e9; color: #80621c; }
+@media (max-width: 1100px) {
+  .ld-inventory .ldi-heading { align-items: flex-start; flex-direction: column; gap: 16px; }
+  .ld-inventory .ldi-summary { width: 100%; }
+  .ld-inventory .ldi-summary > div:first-child { padding-left: 0; border-left: 0; }
+}
+@media (max-width: 680px) {
+  .ld-inventory { padding: 0 8px 12px; }
+  .ld-inventory .ldi-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .ld-inventory .ldi-summary > div { padding: 0 12px; }
+  .ld-inventory .ldi-summary > div:nth-child(3) { padding-left: 0; border-left: 0; }
+  .ld-inventory .ldi-filters label { justify-content: space-between; width: 100%; }
+  .ld-inventory .ldi-filters select, .ld-inventory .ldi-filters input { flex: 1; min-width: 0; max-width: 72%; }
+  .ld-inventory .ldi-footer { align-items: flex-start; flex-direction: column; }
+}
