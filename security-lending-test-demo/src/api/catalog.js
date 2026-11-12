@@ -378,6 +378,19 @@ export const actions = [
     undefined,
     { note: "Requires a report from the separate lifecycle owner." },
   ),
+  op(
+    "valuation-run-lifecycle",
+    "Collateral & risk",
+    "Run loan valuation (lifecycle)",
+    "lender",
+    "POST",
+    "/api/v1/lifecycle/loans/{id}/valuation/run",
+    undefined,
+    {
+      global: true,
+      note: "Publishes a RUN_LOAN_VALUATION event; the lifecycle listener consumes it and emits a VALUATION_REPORTED event.",
+    },
+  ),
   b(
     "margin-respond",
     "Margin & recalls",
@@ -797,13 +810,12 @@ export function defaults(action, now = new Date()) {
       );
 }
 export function requestPath(action, org, id, page = 0, size = 25) {
-  if (!action.global && !/^[1-9]\d*$/.test(String(org)))
+  const isLifecycleApi = action.path.startsWith("/api/v1/lifecycle");
+  if (!action.global && !isLifecycleApi && !/^[1-9]\d*$/.test(String(org)))
     throw Error("Select a valid organization first.");
   if (action.path.includes("{id}") && !/^[1-9]\d*$/.test(String(id)))
     throw Error("Enter the resource ID from this service.");
-  let path = action.global
-    ? action.path
-    : `/api/v1/organizations/${org}${action.path}`;
+  let path = action.global || isLifecycleApi ? action.path : `/api/v1/organizations/${org}${action.path}`;
   path = path.replace("{id}", String(id));
   return path + (action.paged ? `?page=${page}&size=${size}` : "");
 }

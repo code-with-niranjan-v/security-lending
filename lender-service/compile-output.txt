@@ -1,0 +1,49 @@
+[INFO] Scanning for projects...
+[INFO] Loaded 24457 auto-discovered prefixes for remote repository central (prefixes-central.txt)
+[WARNING] Could not transfer metadata /.meta/prefixes.txt from/to central-snapshots (https://central.sonatype.com/repository/maven-snapshots): PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+[WARNING] Could not transfer metadata /.meta/prefixes.txt from/to apache.snapshots (https://repository.apache.org/snapshots): PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+Downloading from central: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-site-plugin/3.22.0/maven-site-plugin-3.22.0.pom
+Progress (1): 739 BProgress (1): 797 BProgress (1): 2.4 kBProgress (1): 5.3 kBProgress (1): 6.4 kBProgress (1): 11 kB Progress (1): 16 kBProgress (1): 17 kBProgress (1): 20 kB                   Downloaded from central: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-site-plugin/3.22.0/maven-site-plugin-3.22.0.pom (20 kB at 47 kB/s)
+Downloading from central: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-plugins/48/maven-plugins-48.pom
+Progress (1): 771 BProgress (1): 829 BProgress (1): 2.4 kBProgress (1): 5.1 kBProgress (1): 7.2 kB                    Downloaded from central: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-plugins/48/maven-plugins-48.pom (7.2 kB at 74 kB/s)
+Downloading from central: https://repo.maven.apache.org/maven2/org/apache/maven/maven-parent/48/maven-parent-48.pom
+Progress (1): 716 BProgress (1): 758 BProgress (1): 2.0 kBProgress (1): 5.7 kBProgress (1): 8.4 kBProgress (1): 13 kB Progress (1): 18 kBProgress (1): 21 kBProgress (1): 26 kBProgress (1): 27 kBProgress (1): 28 kBProgress (1): 32 kBProgress (1): 36 kBProgress (1): 38 kBProgress (1): 40 kBProgress (1): 44 kBProgress (1): 45 kBProgress (1): 49 kBProgress (1): 50 kB                   Downloaded from central: https://repo.maven.apache.org/maven2/org/apache/maven/maven-parent/48/maven-parent-48.pom (50 kB at 318 kB/s)
+Downloading from central: https://repo.maven.apache.org/maven2/org/apache/apache/38/apache-38.pom
+Progress (1): 733 BProgress (1): 774 BProgress (1): 2.1 kBProgress (1): 4.1 kBProgress (1): 5.1 kBProgress (1): 9.0 kBProgress (1): 14 kB Progress (1): 17 kBProgress (1): 20 kBProgress (1): 23 kBProgress (1): 24 kBProgress (1): 26 kB                   Downloaded from central: https://repo.maven.apache.org/maven2/org/apache/apache/38/apache-38.pom (26 kB at 249 kB/s)
+Downloading from central: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-site-plugin/3.22.0/maven-site-plugin-3.22.0.jar
+Progress (1): 0.5/126 kBProgress (1): 1.9/126 kBProgress (1): 3.3/126 kBProgress (1): 4.7/126 kBProgress (1): 6.0/126 kBProgress (1): 7.4/126 kBProgress (1): 7.7/126 kBProgress (1): 9.1/126 kBProgress (1): 10/126 kB Progress (1): 12/126 kBProgress (1): 13/126 kBProgress (1): 15/126 kBProgress (1): 16/126 kBProgress (1): 17/126 kBProgress (1): 19/126 kBProgress (1): 20/126 kBProgress (1): 21/126 kBProgress (1): 23/126 kBProgress (1): 24/126 kBProgress (1): 28/126 kBProgress (1): 33/126 kBProgress (1): 37/126 kBProgress (1): 41/126 kBProgress (1): 45/126 kBProgress (1): 50/126 kBProgress (1): 54/126 kBProgress (1): 57/126 kBProgress (1): 61/126 kBProgress (1): 65/126 kBProgress (1): 70/126 kBProgress (1): 74/126 kBProgress (1): 78/126 kBProgress (1): 82/126 kBProgress (1): 86/126 kBProgress (1): 91/126 kBProgress (1): 95/126 kBProgress (1): 99/126 kBProgress (1): 103/126 kBProgress (1): 108/126 kBProgress (1): 112/126 kBProgress (1): 116/126 kBProgress (1): 120/126 kBProgress (1): 125/126 kBProgress (1): 126 kB                        Downloaded from central: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-site-plugin/3.22.0/maven-site-plugin-3.22.0.jar (126 kB at 416 kB/s)
+Downloading from central: https://repo.maven.apache.org/maven2/org/springframework/boot/maven-metadata.xml
+Downloading from central: https://repo.maven.apache.org/maven2/org/cyclonedx/maven-metadata.xml
+Downloading from central: https://repo.maven.apache.org/maven2/org/flywaydb/maven-metadata.xml
+Downloading from central: https://repo.maven.apache.org/maven2/io/github/git-commit-id/maven-metadata.xml
+Progress (1): 249 B                   Downloaded from central: https://repo.maven.apache.org/maven2/org/springframework/boot/maven-metadata.xml (249 B at 943 B/s)
+Progress (1): 243 B                   Downloading from central: https://repo.maven.apache.org/maven2/org/jooq/maven-metadata.xml
+Progress (2): 243 B | 234 BProgress (3): 243 B | 234 B | 255 B                                   Downloaded from central: https://repo.maven.apache.org/maven2/org/cyclonedx/maven-metadata.xml (243 B at 764 B/s)
+Downloading from central: https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/maven-metadata.xml
+Progress (3): 234 B | 255 B | 398 B                                   Downloaded from central: https://repo.maven.apache.org/maven2/org/flywaydb/maven-metadata.xml (234 B at 680 B/s)
+Downloading from central: https://repo.maven.apache.org/maven2/org/liquibase/maven-metadata.xml
+Downloaded from central: https://repo.maven.apache.org/maven2/io/github/git-commit-id/maven-metadata.xml (255 B at 702 B/s)
+Downloading from central: https://repo.maven.apache.org/maven2/org/graalvm/buildtools/maven-metadata.xml
+Downloaded from central: https://repo.maven.apache.org/maven2/org/jooq/maven-metadata.xml (398 B at 2.9 kB/s)
+Downloading from central: https://repo.maven.apache.org/maven2/io/github/ascopes/maven-metadata.xml
+Progress (1): 375 BProgress (2): 375 B | 394 B                           Downloaded from central: https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/maven-metadata.xml (375 B at 3.1 kB/s)
+Downloading from central: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-metadata.xml
+Progress (2): 394 B | 242 B                           Downloaded from central: https://repo.maven.apache.org/maven2/org/liquibase/maven-metadata.xml (394 B at 2.8 kB/s)
+Downloading from central: https://repo.maven.apache.org/maven2/org/codehaus/mojo/maven-metadata.xml
+Downloaded from central: https://repo.maven.apache.org/maven2/org/graalvm/buildtools/maven-metadata.xml (242 B at 1.6 kB/s)
+Progress (1): 3.8 kBProgress (1): 9.7 kBProgress (1): 10 kB Progress (2): 10 kB | 240 B                           Downloaded from central: https://repo.maven.apache.org/maven2/org/apache/maven/plugins/maven-metadata.xml (10 kB at 91 kB/s)
+Downloaded from central: https://repo.maven.apache.org/maven2/io/github/ascopes/maven-metadata.xml (240 B at 1.4 kB/s)
+Progress (1): 3.1 kBProgress (1): 8.7 kBProgress (1): 14 kB Progress (1): 18 kBProgress (1): 20 kB                   Downloaded from central: https://repo.maven.apache.org/maven2/org/codehaus/mojo/maven-metadata.xml (20 kB at 86 kB/s)
+[INFO] ------------------------------------------------------------------------
+[ERROR] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  5.867 s
+[INFO] Finished at: 2026-11-12T10:09:49+05:30
+[INFO] ------------------------------------------------------------------------
+[ERROR] No plugin found for prefix 'EXIT' in the current project and in the plugin groups [org.springframework.boot, org.cyclonedx, org.flywaydb, io.github.git-commit-id, org.jooq, org.jetbrains.kotlin, org.liquibase, org.graalvm.buildtools, io.github.ascopes, org.apache.maven.plugins, org.codehaus.mojo] available from the repositories [local (C:\Users\2000209443\.m2\repository), central (https://repo.maven.apache.org/maven2)] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/NoPluginFoundForPrefixException

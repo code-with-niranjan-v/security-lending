@@ -188,6 +188,31 @@ class LenderWorkflowTests {
   }
 
   @Test
+  void expandedAgreementIncludesLoanAndCollateralDetailForTheUi() {
+    var o = organization();
+    var c = connection(o);
+    long securityId = security("100");
+    inventory.create(o.getId(), new InventoryRequest(securityId, 1000, "Custody"));
+    var msla = agreement(o, c, securityId, true);
+    reservation(o, c, securityId, 100);
+    var loan = pendingLoan(o, c, 100);
+    var position = positions.findByConnectionIdAndBorrowerPositionId(c.getId(), 400L).orElseThrow();
+    collateral.confirm(o.getId(), position.getId(), "COLLATERAL-RECEIPT");
+    loanService.decide(o.getId(), loan.getId(), true, "Approved");
+    loanService.settle(o.getId(), loan.getId(), "LOAN-SETTLEMENT");
+
+    var expanded = read.agreementExpanded(o.getId(), msla.getId());
+    assertNotNull(expanded);
+    assertFalse(expanded.loans().isEmpty());
+    var firstLoan = expanded.loans().get(0);
+    assertNotNull(firstLoan.securitySymbol());
+    assertNotNull(firstLoan.marketValue());
+    assertNotNull(firstLoan.collateralValue());
+    assertFalse(firstLoan.collateral().isEmpty());
+    assertNotNull(firstLoan.collateral().get(0).securitySymbol());
+  }
+
+  @Test
   void incomingProposalsAreDeduplicatedAndRequireTheRegisteredSender() {
     var o = organization();
     var c = connection(o);
@@ -300,6 +325,19 @@ class LenderWorkflowTests {
     assertEquals(100, inventory.position(o.getId(), s).getLoanedQuantity());
     assertEquals(0, inventory.position(o.getId(), s).getReservedQuantity());
     assertEquals("ACTIVE", loan.getStatus());
+  }
+
+  @Test
+  void lenderAgreementSummaryReturnsBorrowerContextAndStatus() {
+    var o = organization();
+    var c = connection(o);
+    agreement(o, c, 0, true);
+    var summaries = (com.example.lender_service.response.PageResponse<?>) read.agreementSummaries(o.getId(), 0, 20);
+    assertFalse(summaries.content().isEmpty());
+    var summary = (com.example.lender_service.dto.AgreementSummary) summaries.content().get(0);
+    assertEquals(c.getName(), summary.borrowerName());
+    assertEquals(o.getId(), summary.organizationId());
+    assertEquals("ACTIVE", summary.status());
   }
 
   @Test

@@ -17,6 +17,9 @@ export async function lenderGet(path, signal) {
 export const lendDeskApi = {
   dashboard: (organizationId, signal) => lenderGet(`/api/v1/organizations/${organizationId}/lenddesk/dashboard`, signal),
   list: (organizationId, resource, signal) => lenderGet(`/api/v1/organizations/${organizationId}/lenddesk/${resource}?page=0&size=200`, signal),
+  inventory: (organizationId, signal) => lenderGet(`/api/v1/organizations/${organizationId}/lenddesk/inventory?page=0&size=200`, signal),
+  inventoryDetail: (organizationId, inventoryId, signal) => lenderGet(`/api/v1/organizations/${organizationId}/lenddesk/inventory/${inventoryId}`, signal),
   agreement: (organizationId, agreementId, signal) => lenderGet(`/api/v1/organizations/${organizationId}/lenddesk/agreements/${agreementId}`, signal),
+  agreementExpanded: (organizationId, agreementId, signal) => lenderGet(`/api/v1/organizations/${organizationId}/lenddesk/agreements/${agreementId}/expanded`, signal),
   loan: (organizationId, loanId, signal) => lenderGet(`/api/v1/organizations/${organizationId}/lenddesk/loans/${loanId}`, signal),
 }

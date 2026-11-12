@@ -2,9 +2,14 @@ package com.example.lender_service.service;
 
 import static com.example.lender_service.service.Checks.*;
 
+import com.example.lender_service.dto.AgreementExpanded;
+import com.example.lender_service.dto.AgreementSummary;
+import com.example.lender_service.dto.InventoryExpanded;
+import com.example.lender_service.dto.InventorySummary;
 import com.example.lender_service.model.*;
 import com.example.lender_service.repository.*;
 import com.example.lender_service.response.PageResponse;
+import java.math.BigDecimal;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
@@ -20,6 +25,7 @@ public class ReadService {
   private final SecurityMasterRepository securities;
   private final CollateralHaircutRepository haircuts;
   private final CollateralService preview;
+  private final MarketService market;
   private final JsonService json;
   private final NotificationRepository notification;
   private final BorrowerConnectionRepository borrowerConnection;
@@ -92,6 +98,250 @@ public class ReadService {
         json.tree(a.getTerms()),
         "collateralRules",
         haircuts.findByMslaId(id));
+  }
+
+  public Object agreementSummaries(long org, int page, int size) {
+    tenants.exists(org);
+    if (page < 0 || size < 1 || size > 200)
+      throw new IllegalArgumentException("page must be nonnegative; size must be 1..200");
+    var paging = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
+    var pageResult = msla.findByOrganizationId(org, paging);
+    var content =
+        pageResult.getContent().stream()
+            .map(this::toAgreementSummary)
+            .toList();
+    return new PageResponse<>(
+        content,
+        pageResult.getNumber(),
+        pageResult.getSize(),
+        pageResult.getTotalElements(),
+        pageResult.getTotalPages());
+  }
+
+  public AgreementSummary agreementSummary(long org, long id) {
+    var a = found(msla.findByIdAndOrganizationId(id, org));
+    return toAgreementSummary(a);
+  }
+
+  public List<InventorySummary> inventorySummaries(long org, int page, int size) {
+    tenants.exists(org);
+    if (page < 0 || size < 1 || size > 200)
+      throw new IllegalArgumentException("page must be nonnegative; size must be 1..200");
+    var paging = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
+    return inventoryPosition.findByOrganizationId(org, paging).getContent().stream()
+        .map(
+            position -> {
+              var security = securities.findById(position.getSecurityId()).orElse(null);
+              BigDecimal marketPrice =
+                  security == null || security.getPrice() == null ? BigDecimal.ZERO : security.getPrice();
+              BigDecimal marketValue =
+                  marketPrice.multiply(BigDecimal.valueOf(position.getTotalQuantity()));
+              long available = position.getAvailableQuantity();
+              long onLoan = position.getLoanedQuantity();
+              long reserved = position.getReservedQuantity();
+              int utilisation =
+                  position.getTotalQuantity() == 0
+                      ? 0
+                      : (int) Math.round((double) onLoan / position.getTotalQuantity() * 100d);
+              String availability =
+                  available <= 0 ? "Hard to borrow" : utilisation >= 80 ? "Tight" : "Available";
+              return new InventorySummary(
+                  position.getId(),
+                  org,
+                  position.getSecurityId(),
+                  security == null ? null : security.getSymbol(),
+                  security == null ? null : security.getName(),
+                  security == null ? null : security.getIsin(),
+                  "US Equity",
+                  position.getTotalQuantity(),
+                  onLoan,
+                  reserved,
+                  available,
+                  marketPrice,
+                  marketValue,
+                  BigDecimal.ZERO,
+                  utilisation,
+                  availability,
+                  security == null ? null : security.getPriceAt());
+            })
+        .toList();
+  }
+
+  public InventoryExpanded inventoryDetail(long org, long id) {
+    var position = found(inventoryPosition.findByIdAndOrganizationId(id, org));
+    var security = securities.findById(position.getSecurityId()).orElse(null);
+    var summary =
+        new InventorySummary(
+            position.getId(),
+            org,
+            position.getSecurityId(),
+            security == null ? null : security.getSymbol(),
+            security == null ? null : security.getName(),
+            security == null ? null : security.getIsin(),
+            "US Equity",
+            position.getTotalQuantity(),
+            position.getLoanedQuantity(),
+            position.getReservedQuantity(),
+            position.getAvailableQuantity(),
+            security == null || security.getPrice() == null ? BigDecimal.ZERO : security.getPrice(),
+            security == null || security.getPrice() == null
+                ? BigDecimal.ZERO
+                : security.getPrice().multiply(BigDecimal.valueOf(position.getTotalQuantity())),
+            BigDecimal.ZERO,
+            position.getTotalQuantity() == 0
+                ? 0
+                : (int) Math.round((double) position.getLoanedQuantity() / position.getTotalQuantity() * 100d),
+            position.getAvailableQuantity() <= 0 ? "Hard to borrow" : "Available",
+            security == null ? null : security.getPriceAt());
+    var lots =
+        List.of(
+            new InventoryExpanded.InventoryLot(
+                "LOT-" + position.getId(),
+                "DTC 2191",
+                position.getTotalQuantity(),
+                position.getLoanedQuantity(),
+                position.getAvailableQuantity(),
+                summary.availability()));
+    return new InventoryExpanded(summary, lots, 1L, position.getAvailableQuantity());
+  }
+
+  public AgreementExpanded agreementExpanded(long org, long id) {
+    final String activeStatus = "ACTIVE";
+    final String closedStatus = "CLOSED";
+    final String exposureStatus = "APPROVED_PENDING_SETTLEMENT";
+    var a = found(msla.findByIdAndOrganizationId(id, org));
+    var summary = toAgreementSummary(a);
+    var borrower = borrowerConnection.findById(a.getConnectionId()).orElse(null);
+    var loans =
+        loan.findByMslaId(id).stream()
+            .sorted(Comparator.comparing(Loan::getId).reversed())
+            .map(
+                l -> {
+                  var security = securities.findById(l.getSecurityId()).orElse(null);
+                  var price = market.price(l.getSecurityId());
+                  var valuation =
+                      loanValuation
+                          .findFirstByLoanIdOrderByValuedAtDescIdDesc(l.getId())
+                          .orElse(null);
+                  var collateralList =
+                      collateralPosition.findByLoanId(l.getId()).stream()
+                          .sorted(Comparator.comparing(CollateralPosition::getId).reversed())
+                          .map(
+                              p -> {
+                                var assetSecurity =
+                                    p.getSecurityId() == null
+                                        ? null
+                                        : securities.findById(p.getSecurityId()).orElse(null);
+                                BigDecimal assetPrice =
+                                    p.getSecurityId() == null
+                                        ? BigDecimal.ZERO
+                                        : market.price(p.getSecurityId()).value();
+                                BigDecimal marketValue =
+                                    "SECURITY".equalsIgnoreCase(p.getAssetType())
+                                        ? assetPrice.multiply(BigDecimal.valueOf(p.getQuantity()))
+                                        : p.getCashAmount();
+                                return new AgreementExpanded.CollateralSummary(
+                                    p.getId(),
+                                    p.getStatus(),
+                                    p.getAssetType(),
+                                    p.getSecurityId(),
+                                    assetSecurity == null ? p.getAssetType() : assetSecurity.getSymbol(),
+                                    p.getQuantity(),
+                                    p.getCashAmount(),
+                                    p.getHaircut(),
+                                    assetPrice,
+                                    marketValue);
+                              })
+                          .toList();
+                  BigDecimal collateralValue =
+                      collateralList.stream()
+                          .map(AgreementExpanded.CollateralSummary::marketValue)
+                          .filter(Objects::nonNull)
+                          .reduce(BigDecimal.ZERO, BigDecimal::add);
+                  BigDecimal loanMarketValue =
+                      valuation != null && valuation.getLoanMarketValue() != null
+                          ? valuation.getLoanMarketValue()
+                          : price.value().multiply(BigDecimal.valueOf(l.getOutstandingQuantity()));
+                  BigDecimal coverageRatio =
+                      valuation != null && valuation.getCoverageRatio() != null
+                          ? valuation.getCoverageRatio()
+                          : (loanMarketValue.signum() == 0
+                              ? BigDecimal.ZERO
+                              : collateralValue.multiply(BigDecimal.valueOf(100))
+                                  .divide(loanMarketValue, 4, java.math.RoundingMode.HALF_UP));
+                  return new AgreementExpanded.LoanSummary(
+                      l.getId(),
+                      l.getBorrowerLoanId(),
+                      l.getStatus(),
+                      l.getSecurityId(),
+                      security == null ? null : security.getSymbol(),
+                      security == null ? null : security.getName(),
+                      l.getQuantity(),
+                      l.getOutstandingQuantity(),
+                      price.value(),
+                      loanMarketValue,
+                      coverageRatio,
+                      collateralValue,
+                      valuation == null ? null : valuation.getRequiredCollateral(),
+                      (long) collateralList.size(),
+                      l.getSettledAt(),
+                      l.getClosedAt(),
+                      collateralList);
+                })
+            .toList();
+    long activeLoanCount = loans.stream().filter(l -> activeStatus.equals(l.status())).count();
+    long closedLoanCount = loans.stream().filter(l -> closedStatus.equals(l.status())).count();
+    BigDecimal totalExposure =
+        loans.stream()
+            .filter(
+                l ->
+                    Set.of(exposureStatus, activeStatus, "DEFAULTED").contains(l.status()))
+            .map(
+                l ->
+                    (l.marketValue() == null ? BigDecimal.ZERO : l.marketValue()))
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+    return new AgreementExpanded(summary, borrower, loans, activeLoanCount, closedLoanCount, totalExposure);
+  }
+
+  private AgreementSummary toAgreementSummary(Msla a) {
+    var connection = borrowerConnection.findById(a.getConnectionId()).orElse(null);
+    long borrowerOrgId = connection == null ? null : connection.getBorrowerOrganizationId();
+    String borrowerName = connection == null ? "Unknown borrower" : connection.getName();
+    String borrowerExternalId = connection == null ? null : connection.getExternalId();
+    long activeLoanCount =
+        loan.findByMslaId(a.getId()).stream().filter(l -> "ACTIVE".equals(l.getStatus())).count();
+    long totalLoanCount = loan.findByMslaId(a.getId()).size();
+    BigDecimal totalExposure =
+        loan.findByMslaId(a.getId()).stream()
+            .filter(l -> Set.of("APPROVED_PENDING_SETTLEMENT", "ACTIVE", "DEFAULTED").contains(l.getStatus()))
+            .map(
+                l ->
+                    market.price(l.getSecurityId())
+                        .value()
+                        .multiply(BigDecimal.valueOf(l.getOutstandingQuantity())))
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+    return new AgreementSummary(
+        a.getId(),
+        a.getOrganizationId(),
+        a.getConnectionId(),
+        borrowerOrgId,
+        borrowerName,
+        borrowerExternalId,
+        a.getNumber(),
+        a.getStatus(),
+        a.getEffectiveDate(),
+        a.getExpiryDate(),
+        a.getCreditLimit(),
+        a.getFeeRate(),
+        a.getRebateRate(),
+        a.getCoverageRatio(),
+        a.getBillingFrequency(),
+        a.getRebateSettlementFrequency(),
+        a.getDayBasis(),
+        a.getRecallAllowed(),
+        activeLoanCount,
+        totalLoanCount,
+        totalExposure);
   }
 
   public Object loanRebates(long org, long loanId, String resource, int page, int size) {

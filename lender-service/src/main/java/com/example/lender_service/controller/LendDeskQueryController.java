@@ -24,8 +24,41 @@ public class LendDeskQueryController {
     return ApiResponse.ok(read.list(org, resource, page, size));
   }
 
+  @GetMapping("/agreements")
+  public ApiResponse<?> agreementSummaries(
+      @PathVariable long org,
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "200") int size) {
+    return ApiResponse.ok(read.agreementSummaries(org, page, size));
+  }
+
   @GetMapping("/agreements/{id}")
-  public ApiResponse<?> agreement(@PathVariable long org, @PathVariable long id) { return ApiResponse.ok(read.agreement(org, id)); }
+  public ApiResponse<?> agreement(@PathVariable long org, @PathVariable long id) {
+    return ApiResponse.ok(read.agreement(org, id));
+  }
+
+  @GetMapping("/agreements/{id}/summary")
+  public ApiResponse<?> agreementSummary(@PathVariable long org, @PathVariable long id) {
+    return ApiResponse.ok(read.agreementSummary(org, id));
+  }
+
+  @GetMapping("/agreements/{id}/expanded")
+  public ApiResponse<?> agreementExpanded(@PathVariable long org, @PathVariable long id) {
+    return ApiResponse.ok(read.agreementExpanded(org, id));
+  }
+
+  @GetMapping("/inventory")
+  public ApiResponse<?> inventorySummaries(
+      @PathVariable long org,
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "200") int size) {
+    return ApiResponse.ok(read.inventorySummaries(org, page, size));
+  }
+
+  @GetMapping("/inventory/{id}")
+  public ApiResponse<?> inventoryDetail(@PathVariable long org, @PathVariable long id) {
+    return ApiResponse.ok(read.inventoryDetail(org, id));
+  }
 
   @GetMapping("/loans/{id}")
   public ApiResponse<?> loan(@PathVariable long org, @PathVariable long id) { return ApiResponse.ok(read.loan(org, id)); }
