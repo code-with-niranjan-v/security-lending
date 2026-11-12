@@ -1,3 +1,4 @@
+import DemoInventoryPage from './DemoInventoryPage'
 import { Fragment, useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { lenderGet, lendDeskApi } from '../api/lendDeskApi'
@@ -193,6 +194,11 @@ function ExpandedInventory({ security, live, org, data, errors }) {
 }
 
 export default function InventoryPage() {
+  const { mode } = useDataSource()
+  return mode === 'live' ? <LiveInventoryPage /> : <DemoInventoryPage />
+}
+
+function LiveInventoryPage() {
   const { searchTerm = '' } = useOutletContext()
   const { mode, organizationId, refreshKey, refresh } = useDataSource()
   const live = mode === 'live'
