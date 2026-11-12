@@ -20,6 +20,11 @@ public class LifecycleRequestController {
     return ApiResponse.ok(requests.recall(org, id, r));
   }
 
+  @PostMapping("/loans/{id}/margin-call-requests")
+  public ApiResponse<?> margin(@PathVariable long org,@PathVariable long id,@Valid @RequestBody MarginIssueRequest r){
+    return ApiResponse.ok(requests.margin(org,id,r));
+  }
+
   @PostMapping("/rebates/{id}/payment-requests")
   public ApiResponse<?> rebate(
       @PathVariable long org, @PathVariable long id, @Valid @RequestBody LifecycleActionRequest r) {

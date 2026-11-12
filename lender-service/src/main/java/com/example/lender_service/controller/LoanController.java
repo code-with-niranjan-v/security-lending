@@ -25,6 +25,11 @@ public class LoanController {
     return ApiResponse.ok(collateral.preview(org, id, true, null));
   }
 
+  @GetMapping("/loans/{id}/margin-preview")
+  public ApiResponse<?> marginPreview(@PathVariable long org,@PathVariable long id){
+    return ApiResponse.ok(collateral.preview(org,id,false,null));
+  }
+
   @PostMapping("/loans/{id}/approve")
   public ApiResponse<?> approve(@PathVariable long org, @PathVariable long id) {
     return ApiResponse.ok(loans.decide(org, id, true, "Approved"));

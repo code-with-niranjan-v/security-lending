@@ -25,6 +25,8 @@ public class LifecycleRequestService {
   private final TenantService tenants;
   private final EventService events;
   private final JsonService json;
+  private final CollateralService collateral;
+  private final MarginCallRepository marginCalls;
   private final Clock clock;
 
   public LifecycleRequest recall(long org, long loanId, RecallRequest r) {
@@ -33,6 +35,7 @@ public class LifecycleRequestService {
     var retry = requests.findByOrganizationIdAndClientRequestId(org, r.clientRequestId());
     if (retry.isPresent())
       return same(retry.get(), "RECALL_REQUESTED", json.write(r), loan.getId());
+    tenants.connection(org,loan.getConnectionId());
     require("ACTIVE".equals(loan.getStatus()), "Recall requires an active loan");
     require(
         found(agreements.findById(loan.getMslaId())).getRecallAllowed(),
@@ -53,10 +56,40 @@ public class LifecycleRequestService {
     return create(loan, "RECALL_REQUESTED", r.clientRequestId(), r);
   }
 
+  public LifecycleRequest margin(long org, long loanId, MarginIssueRequest r) {
+    tenants.lock(org);
+    var loan = found(loans.findByIdAndOrganizationId(loanId, org));
+    var retry = requests.findByOrganizationIdAndClientRequestId(org, r.clientRequestId());
+    if (retry.isPresent()) return same(retry.get(), "MARGIN_CALL_REQUESTED", json.write(r), loanId);
+    tenants.connection(org, loan.getConnectionId());
+    require("ACTIVE".equals(loan.getStatus()), "Margin call requires an active loan");
+    require(r.dueAt().isAfter(clock.instant()), "Response deadline must be future");
+    var open = Set.of("PENDING", "OPEN", "PARTIALLY_FULFILLED", "OVERDUE");
+    require(
+        marginCalls.findByOrganizationIdAndLoanIdIn(org, List.of(loanId)).stream()
+            .noneMatch(x -> open.contains(x.getStatus())),
+        "An open margin call already exists");
+    require(
+        requests.findByOrganizationIdAndLoanIdIn(org, List.of(loanId)).stream()
+            .noneMatch(
+                x ->
+                    "MARGIN_CALL_REQUESTED".equals(x.getType())
+                        && Set.of("PENDING", "ACCEPTED").contains(x.getStatus())),
+        "A margin call request is already pending");
+    var preview = collateral.preview(org, loanId, false, null);
+    var shortfall = (java.math.BigDecimal) preview.get("shortfall");
+    require(shortfall.signum() > 0, "Loan has no collateral shortfall");
+    require(
+        r.amount().compareTo(shortfall) >= 0, "Requested amount must cover the current shortfall");
+    return create(loan, "MARGIN_CALL_REQUESTED", r.clientRequestId(), r);
+  }
+
   public LifecycleRequest rebatePayment(long org, long id, LifecycleActionRequest r) {
     tenants.lock(org);
     var rebate = found(rebates.findByIdAndOrganizationId(id, org));
-    require(rebate.getSettlementFrequency() == null, "This rebate settles automatically under its MSLA");
+    require(
+        rebate.getSettlementFrequency() == null,
+        "This rebate settles automatically under its MSLA");
     require("ACCRUED".equals(rebate.getStatus()), "Rebate is not awaiting payment");
     var loan = found(loans.findById(rebate.getLoanId()));
     return create(

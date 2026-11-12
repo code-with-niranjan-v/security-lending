@@ -34,6 +34,7 @@ public class LifecycleEventService {
   private final MarginCallRepository calls;
   private final RecallRepository recalls;
   private final RecallService recallWorkflow;
+  private final CollateralService collateralPreview;
   private final LendingFeeRepository fees;
   private final RebateRepository rebates;
   private final DailyAccrualRepository accruals;
@@ -193,6 +194,47 @@ public class LifecycleEventService {
         valuations.save(p);
       }
       case "MARGIN_CALL_UPDATED" -> {
+        if(d.hasNonNull("lifecycleRequestId")){
+          var request =
+              found(
+                  requests.findByIdAndOrganizationId(
+                      number(d, "lifecycleRequestId"), e.organizationId()));
+          require(
+              "MARGIN_CALL_REQUESTED".equals(request.getType())
+                  && Objects.equals(request.getLoanId(), loan.getId())
+                  && Objects.equals(request.getConnectionId(), connection.getId()),
+              "Margin request does not match this loan");
+          if (!Set.of("PENDING", "ACCEPTED").contains(request.getStatus())) return;
+          var terms = json.tree(request.getPayload());
+          require(
+              decimal(d, "amount").compareTo(decimal(terms, "amount")) == 0
+                  && instant(d, "dueAt").equals(instant(terms, "dueAt"))
+                  && text(d, "reason").equals(text(terms, "reason"))
+                  && decimal(d, "fulfilledAmount").signum() == 0
+                  && "OPEN".equals(text(d, "status")),
+              "Margin issuance does not match requested terms");
+          boolean open =
+              calls
+                  .findByOrganizationIdAndLoanIdIn(e.organizationId(), List.of(loan.getId()))
+                  .stream()
+                  .anyMatch(
+                      x ->
+                          Set.of("PENDING", "OPEN", "PARTIALLY_FULFILLED", "OVERDUE")
+                              .contains(x.getStatus()));
+          var currentShortfall =
+              (BigDecimal)
+                  collateralPreview
+                      .preview(e.organizationId(), loan.getId(), false, null)
+                      .get("shortfall");
+          if (open
+              || !"ACTIVE".equals(loan.getStatus())
+              || !instant(d, "dueAt").isAfter(clock.instant())
+              || currentShortfall.signum() <= 0
+              || decimal(d, "amount").compareTo(currentShortfall) < 0) {
+            request.setStatus("REJECTED");
+            return;
+          }
+        }
         var p =
             view(
                 e,
@@ -210,6 +252,7 @@ public class LifecycleEventService {
         p.setReason(text(d, "reason"));
         text(d, "externalId");
         calls.save(p);
+        completeRequest(e, loan);
       }
       case "RECALL_UPDATED" -> {
         var existing =

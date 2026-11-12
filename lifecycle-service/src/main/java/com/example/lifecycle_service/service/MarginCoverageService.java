@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class MarginCoverageService {
   private final LoanRepository loanRepository;
+  private final RecallRequestRecordRepository lenderRequests;
   private final MslaRepository mslaRepository;
   private final CollateralPositionRepository collateralPositionRepository;
   private final LoanValuationRepository loanValuationRepository;
@@ -99,6 +100,12 @@ public class MarginCoverageService {
     // Collateral settlement in the lender service locks this same organization row.
     loanRepository.lockOrganization(loan.getOrganizationId());
     MarginCoverageDecision decision = evaluateLoan(loanId);
+    if(!lenderRequests.findByLoanIdAndTypeAndStatusIn(loanId,"MARGIN_CALL_REQUESTED",java.util.Set.of("PENDING","ACCEPTED")).isEmpty()){
+      decision.setStatus("MARGIN_REQUEST_PENDING");
+      decision.setReason("An explicit lender margin request awaits owner confirmation.");
+      return decision;
+    }
+
     BigDecimal amountToCall =
         requestedAmount != null && requestedAmount.signum() > 0
             ? requestedAmount

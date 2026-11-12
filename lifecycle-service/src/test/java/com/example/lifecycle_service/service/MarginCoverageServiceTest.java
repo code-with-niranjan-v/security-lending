@@ -23,6 +23,7 @@ class MarginCoverageServiceTest {
           null,
           null,
           null,
+          null,
           (KafkaTemplate<String, String>) null,
           new ObjectMapper().registerModule(new JavaTimeModule()));
 

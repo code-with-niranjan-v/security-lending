@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class LendDeskQueryController {
   private final ReadService read;
+  private final com.example.lender_service.service.LoanScreenService loanScreen;
   private final com.example.lender_service.service.AgreementScreenService agreementScreen;
   private final com.example.lender_service.service.LocateScreenService locateScreen;
 
@@ -26,6 +27,15 @@ public class LendDeskQueryController {
   public ApiResponse<?> list(@PathVariable long org, @PathVariable String resource, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "200") int size) {
     return ApiResponse.ok(read.list(org, resource, page, size));
   }
+
+  @GetMapping("/loans/overview")
+  public ApiResponse<?> loanOverview(@PathVariable long org,
+      @RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="50") int size,
+      @RequestParam(required=false) Long connectionId,@RequestParam(required=false) Long mslaId,
+      @RequestParam(required=false) String status,@RequestParam(required=false) String coverage,
+      @RequestParam(required=false) String q){return ApiResponse.ok(loanScreen.overview(org,page,size,connectionId,mslaId,status,coverage,q));}
+  @GetMapping("/loans/{id}/screen")
+  public ApiResponse<?> loanScreen(@PathVariable long org,@PathVariable long id){return ApiResponse.ok(loanScreen.detail(org,id));}
 
   @GetMapping("/locates/overview")
   public ApiResponse<?> locateOverview(@PathVariable long org,

@@ -16,17 +16,20 @@ import org.springframework.stereotype.Component;
 public class RecallCommandListener {
   private final ObjectMapper json;
   private final RecallLifecycleService recalls;
+  private final MarginRequestLifecycleService margins;
 
   @KafkaListener(
       topics = "${lifecycle.lender-commands-topic:lender.lifecycle.commands.v1}",
       groupId = "lifecycle-recalls")
   public void receive(String body) throws JsonProcessingException {
     var command = json.readTree(body);
-    if (!"RECALL_REQUESTED".equals(command.path("type").asText())) return;
+    String type=command.path("type").asText();
+    if (!java.util.Set.of("RECALL_REQUESTED","MARGIN_CALL_REQUESTED").contains(type)) return;
     long org = command.path("organizationId").asLong();
     long requestId = command.path("referenceId").asLong();
     if (org <= 0 || requestId <= 0)
       throw new IllegalArgumentException("Invalid recall command IDs");
-    recalls.issue(org, requestId);
+    if("RECALL_REQUESTED".equals(type))recalls.issue(org, requestId);
+    else margins.issue(org,requestId);
   }
 }

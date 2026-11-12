@@ -38,6 +38,7 @@ class LenderWorkflowTests {
   @Autowired LifecycleRequestService lifecycleRequests;
   @Autowired LifecycleEventService lifecycle;
   @Autowired ReadService read;
+  @Autowired LoanScreenService loanScreen;
   @Autowired OutboxService outbox;
   @Autowired JsonService json;
   @Autowired OrganizationRepository organizations;
@@ -177,6 +178,159 @@ class LenderWorkflowTests {
   }
 
   @Test
+  void liveLoanRegisterHasNoFabricatedValuationsAndIsTenantScoped() throws Exception {
+    var org = organization();
+    var c = connection(org);
+    long sec = security("100");
+    var loan = activeLoan(org, c, sec, true);
+    var root = "/api/v1/organizations/" + org.getId() + "/lenddesk/loans";
+    mvc.perform(get(root + "/overview"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.activeLoanCount").value(1))
+        .andExpect(jsonPath("$.data.loans.content[0].id").value(loan.getId()))
+        .andExpect(jsonPath("$.data.loans.content[0].coverageStatus").value("UNKNOWN"))
+        .andExpect(jsonPath("$.data.loans.content[0].marketValue").isEmpty())
+        .andExpect(jsonPath("$.data.loans.content[0].maturity").isEmpty())
+        .andExpect(jsonPath("$.data.totals[0].missingValuations").value(1));
+    mvc.perform(get(root + "/overview").param("coverage", "UNKNOWN"))
+        .andExpect(jsonPath("$.data.loans.totalElements").value(1));
+    mvc.perform(get(root + "/overview").param("size", "201")).andExpect(status().isBadRequest());
+    mvc.perform(get(root + "/overview").param("status", "BOGUS"))
+        .andExpect(status().isBadRequest());
+    mvc.perform(get(root + "/overview").param("coverage", "BOGUS"))
+        .andExpect(status().isBadRequest());
+    var other = organization();
+    mvc.perform(
+            get(
+                "/api/v1/organizations/"
+                    + other.getId()
+                    + "/lenddesk/loans/"
+                    + loan.getId()
+                    + "/screen"))
+        .andExpect(status().isNotFound());
+    mvc.perform(get(root + "/" + loan.getId() + "/screen"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.collateral.length()").value(1))
+        .andExpect(jsonPath("$.data.activity.length()").value(2))
+        .andExpect(jsonPath("$.data.loan.returnedQuantity").value(0));
+    lifecycle(
+        org,
+        "VALUATION_REPORTED",
+        loan.getId(),
+        1,
+        Map.of(
+            "loanId",
+            loan.getId(),
+            "loanMarketValue",
+            "10000",
+            "requiredCollateral",
+            "10500",
+            "recognizedCollateral",
+            "11000",
+            "coverageRatio",
+            "1.1",
+            "shortfall",
+            "0",
+            "status",
+            "HEALTHY"));
+    mvc.perform(get(root + "/overview").param("coverage", "SUFFICIENT"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.loans.content[0].marketValue").value(10000))
+        .andExpect(jsonPath("$.data.loans.content[0].coverage").value(110))
+        .andExpect(jsonPath("$.data.totals[0].currency").value("INR"));
+    mvc.perform(get(root + "/overview").param("coverage", "SHORTFALL"))
+        .andExpect(jsonPath("$.data.loans.totalElements").value(0));
+  }
+
+  @Test
+  void marginRequestsAreValidatedIdempotentAndCompletedOnlyByOwner() throws Exception {
+    var org = organization();
+    var c = connection(org);
+    long sec = security("100");
+    var loan = activeLoan(org, c, sec, true);
+    var due = Instant.now().plusSeconds(86400);
+    var request = new MarginIssueRequest(bd("1600"), due, "Market move", "live-margin-test");
+    assertThrows(
+        ResponseStatusException.class,
+        () -> lifecycleRequests.margin(org.getId(), loan.getId(), request));
+    market.quote(sec, bd("120"), Instant.now()); // Required 12,600, confirmed cash 11,000.
+    var pending = lifecycleRequests.margin(org.getId(), loan.getId(), request);
+    assertEquals("PENDING", pending.getStatus());
+    assertEquals(0, calls.findByOrganizationId(org.getId(), Pageable.unpaged()).getTotalElements());
+    assertEquals(
+        pending.getId(), lifecycleRequests.margin(org.getId(), loan.getId(), request).getId());
+    assertThrows(
+        ResponseStatusException.class,
+        () ->
+            lifecycleRequests.margin(
+                org.getId(),
+                loan.getId(),
+                new MarginIssueRequest(bd("1700"), due, "Changed", request.clientRequestId())));
+    assertThrows(
+        ResponseStatusException.class,
+        () ->
+            lifecycleRequests.margin(
+                org.getId(),
+                loan.getId(),
+                new MarginIssueRequest(bd("1600"), due, "Duplicate", "another-id")));
+    lifecycle(
+        org,
+        "MARGIN_CALL_UPDATED",
+        loan.getId(),
+        1,
+        Map.of(
+            "loanId",
+            loan.getId(),
+            "lifecycleRequestId",
+            pending.getId(),
+            "externalId",
+            "MARGIN-" + pending.getId(),
+            "amount",
+            "1600",
+            "fulfilledAmount",
+            "0",
+            "dueAt",
+            due.toString(),
+            "reason",
+            "Market move",
+            "status",
+            "OPEN"));
+    assertEquals("COMPLETED", pending.getStatus());
+    assertEquals(1, calls.findByOrganizationId(org.getId(), Pageable.unpaged()).getTotalElements());
+    mvc.perform(
+            post("/api/v1/organizations/"
+                    + org.getId()
+                    + "/loans/"
+                    + loan.getId()
+                    + "/margin-call-requests")
+                .contentType("application/json")
+                .content(
+                    json.write(
+                        new MarginIssueRequest(
+                            bd("1"), Instant.now().minusSeconds(1), "Invalid", "bad"))))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void recallCapacityIncludesPendingRequestsWithoutChangingOutstanding() {
+    var org = organization();
+    var c = connection(org);
+    long sec = security("100");
+    var loan = activeLoan(org, c, sec, true);
+    var request = new RecallRequest(30, "Portfolio sale", "live-recall-test");
+    var pending=lifecycleRequests.recall(org.getId(),loan.getId(),request);
+    assertEquals(pending.getId(),lifecycleRequests.recall(org.getId(),loan.getId(),request).getId());
+    assertEquals(100,loan.getOutstandingQuantity());
+    var row=(Map<?,?>)loanScreen.detail(org.getId(),loan.getId()).get("loan");
+    assertEquals(70L,row.get("recallAvailableQuantity"));
+    assertThrows(
+        ResponseStatusException.class,
+        () ->
+            lifecycleRequests.recall(
+                org.getId(), loan.getId(), new RecallRequest(71, "Too much", "over-capacity")));
+  }
+
+  @Test
   void agreementsScreenOverviewAndPanelsAreOrganizationScoped() throws Exception {
     var o = organization();
     var c = connection(o);
@@ -191,13 +345,17 @@ class LenderWorkflowTests {
     loanService.settle(o.getId(), l.getId(), "SCREEN-SETTLEMENT");
     var fee = new LendingFee();
     fee.setOrganizationId(o.getId()); fee.setConnectionId(c.getId()); fee.setLoanId(l.getId());
-    fee.setOwnerReferenceId(901L); fee.setSourceVersion(1L); fee.setSourceData("{}"); fee.setStatus("DUE");
+    fee.setOwnerReferenceId(901L); fee.setSourceVersion(1L);
+    fee.setSourceData("{}");
+    fee.setStatus("DUE");
     fee.setCreatedAt(Instant.now()); fee.setAmount(bd("12.34")); fee.setRate(bd("0.03"));
     fee.setPeriodStart(LocalDate.now()); fee.setPeriodEnd(LocalDate.now()); fee.setDueDate(LocalDate.now().plusDays(10));
     feesForScreenTest.saveAndFlush(fee);
     var rebate = new Rebate();
     rebate.setOrganizationId(o.getId()); rebate.setConnectionId(c.getId()); rebate.setLoanId(l.getId());
-    rebate.setOwnerReferenceId(902L); rebate.setSourceVersion(1L); rebate.setSourceData("{}"); rebate.setStatus("PAID");
+    rebate.setOwnerReferenceId(902L); rebate.setSourceVersion(1L);
+    rebate.setSourceData("{}");
+    rebate.setStatus("PAID");
     rebate.setCreatedAt(Instant.now()); rebate.setAmount(bd("1.23")); rebate.setRate(bd("0.01"));
     rebate.setAccrualDate(LocalDate.now()); rebate.setPaymentDate(LocalDate.now());
     rebates.saveAndFlush(rebate);
@@ -225,12 +383,21 @@ class LenderWorkflowTests {
         .andExpect(jsonPath("$.data.audit").isNotEmpty());
     mvc.perform(get(base + "/overview").param("recallAllowed", "false"))
         .andExpect(jsonPath("$.data.agreements.totalElements").value(0));
-    mvc.perform(get(base + "/overview").param("connectionId", String.valueOf(c.getId())).param("q", "BORROWER"))
+    mvc.perform(
+            get(base + "/overview")
+                .param("connectionId", String.valueOf(c.getId()))
+                .param("q", "BORROWER"))
         .andExpect(jsonPath("$.data.agreements.totalElements").value(1));
     mvc.perform(get(base + "/overview").param("activeOn", a.getExpiryDate().plusDays(1).toString()))
         .andExpect(jsonPath("$.data.agreements.totalElements").value(0));
     var other = organization();
-    mvc.perform(get("/api/v1/organizations/" + other.getId() + "/lenddesk/agreements/" + a.getId() + "/screen"))
+    mvc.perform(
+            get(
+                "/api/v1/organizations/"
+                    + other.getId()
+                    + "/lenddesk/agreements/"
+                    + a.getId()
+                    + "/screen"))
         .andExpect(status().isNotFound());
     mvc.perform(get("/api/v1/organizations/" + other.getId() + "/lenddesk/agreements/overview"))
         .andExpect(jsonPath("$.data.agreements.totalElements").value(0))
@@ -308,7 +475,10 @@ class LenderWorkflowTests {
     var locate = locates.findById(r.getLocateId()).orElseThrow();
     locate.setExpiresAt(Instant.now().plusSeconds(7200)); locates.saveAndFlush(locate);
     String base = "/api/v1/organizations/" + o.getId() + "/lenddesk/locates";
-    mvc.perform(get(base + "/overview").param("mslaId", String.valueOf(a.getId())).param("expiry", "UPCOMING"))
+    mvc.perform(
+            get(base + "/overview")
+                .param("mslaId", String.valueOf(a.getId()))
+                .param("expiry", "UPCOMING"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.pendingCount").value(0))
         .andExpect(jsonPath("$.data.activeReservationCount").value(1))
@@ -327,7 +497,13 @@ class LenderWorkflowTests {
     mvc.perform(get(base + "/overview").param("q", "LOC-" + locate.getId()))
         .andExpect(jsonPath("$.data.locates.totalElements").value(1));
     var other = organization();
-    mvc.perform(get("/api/v1/organizations/" + other.getId() + "/lenddesk/locates/" + locate.getId() + "/screen"))
+    mvc.perform(
+            get(
+                "/api/v1/organizations/"
+                    + other.getId()
+                    + "/lenddesk/locates/"
+                    + locate.getId()
+                    + "/screen"))
         .andExpect(status().isNotFound());
     mvc.perform(get("/api/v1/organizations/" + other.getId() + "/lenddesk/locates/overview"))
         .andExpect(jsonPath("$.data.locates.totalElements").value(0))
@@ -339,31 +515,57 @@ class LenderWorkflowTests {
     var o = organization(); var c = connection(o); long securityId = security("100");
     inventory.create(o.getId(), new InventoryRequest(securityId, 1000, "Custody"));
     agreement(o, c, securityId, true);
-    command(o, "LOCATE_REQUESTED", 101, 10, new LocateCommand(10, securityId, 200, Instant.now().plusSeconds(7200)));
+    command(
+        o,
+        "LOCATE_REQUESTED",
+        101,
+        10,
+        new LocateCommand(10, securityId, 200, Instant.now().plusSeconds(7200)));
     var locate = locates.findByConnectionIdAndBorrowerLocateId(c.getId(), 101L).orElseThrow();
     String decision = "/api/v1/organizations/" + o.getId() + "/locates/" + locate.getId();
-    String screen = "/api/v1/organizations/" + o.getId() + "/lenddesk/locates/" + locate.getId() + "/screen";
+    String screen =
+        "/api/v1/organizations/" + o.getId() + "/lenddesk/locates/" + locate.getId() + "/screen";
     mvc.perform(get(screen)).andExpect(jsonPath("$.data.locate.canApprove").value(true));
-    mvc.perform(post(decision + "/approve").contentType("application/json").content("{\"quantity\":201,\"reason\":\"Too much\"}"))
+    mvc.perform(
+            post(decision + "/approve")
+                .contentType("application/json")
+                .content("{\"quantity\":201,\"reason\":\"Too much\"}"))
         .andExpect(status().isConflict());
-    mvc.perform(post(decision + "/approve").contentType("application/json").content("{\"quantity\":150,\"reason\":\"Approved partial\"}"))
-        .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("PARTIALLY_APPROVED"));
+    mvc.perform(
+            post(decision + "/approve")
+                .contentType("application/json")
+                .content("{\"quantity\":150,\"reason\":\"Approved partial\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.status").value("PARTIALLY_APPROVED"));
     mvc.perform(get(screen))
         .andExpect(jsonPath("$.data.locate.availableQuantity").value(150))
         .andExpect(jsonPath("$.data.locate.inventoryAvailableQuantity").value(1000))
         .andExpect(jsonPath("$.data.reservations").isEmpty())
         .andExpect(jsonPath("$.data.locate.canApprove").value(false));
     long eventCount = events.count();
-    mvc.perform(post(decision + "/approve").contentType("application/json").content("{\"quantity\":150,\"reason\":\"Retry\"}"))
+    mvc.perform(
+            post(decision + "/approve")
+                .contentType("application/json")
+                .content("{\"quantity\":150,\"reason\":\"Retry\"}"))
         .andExpect(status().isConflict());
     assertEquals(eventCount, events.count());
-    command(o, "LOCATE_REQUESTED", 102, 10, new LocateCommand(10, securityId, 100, Instant.now().plusSeconds(7200)));
+    command(
+        o,
+        "LOCATE_REQUESTED",
+        102,
+        10,
+        new LocateCommand(10, securityId, 100, Instant.now().plusSeconds(7200)));
     var rejected = locates.findByConnectionIdAndBorrowerLocateId(c.getId(), 102L).orElseThrow();
-    mvc.perform(post("/api/v1/organizations/" + o.getId() + "/locates/" + rejected.getId() + "/reject")
-        .contentType("application/json").content("{\"reason\":\"Outside mandate\"}"))
-        .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("REJECTED"));
+    mvc.perform(
+            post("/api/v1/organizations/" + o.getId() + "/locates/" + rejected.getId() + "/reject")
+                .contentType("application/json")
+                .content("{\"reason\":\"Outside mandate\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.status").value("REJECTED"));
     var trail = locateScreenForTests.detail(o.getId(), rejected.getId());
-    assertTrue(trail.activity().stream().anyMatch(event -> event.type().equals("LOCATE_DECISION_REJECTED")));
+    assertTrue(
+        trail.activity().stream()
+            .anyMatch(event -> event.type().equals("LOCATE_DECISION_REJECTED")));
   }
 
   @Test
@@ -382,7 +584,8 @@ class LenderWorkflowTests {
         .andExpect(jsonPath("$.data.activeReservationCount").value(1));
     mvc.perform(get(base + "/overview").param("expiry", "URGENT"))
         .andExpect(jsonPath("$.data.locates.content").isEmpty());
-    mvc.perform(get(base + "/overview").param("expiry", "invalid")).andExpect(status().isBadRequest());
+    mvc.perform(get(base + "/overview").param("expiry", "invalid"))
+        .andExpect(status().isBadRequest());
     mvc.perform(get(base + "/overview").param("page", "-1")).andExpect(status().isBadRequest());
     mvc.perform(get(base + "/overview").param("size", "201")).andExpect(status().isBadRequest());
   }

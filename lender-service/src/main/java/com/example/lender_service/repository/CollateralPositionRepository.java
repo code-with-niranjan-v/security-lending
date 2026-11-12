@@ -17,4 +17,6 @@ public interface CollateralPositionRepository extends JpaRepository<CollateralPo
       Long connectionId, Long borrowerLoanId);
 
   List<CollateralPosition> findByLoanId(Long loanId);
+  List<CollateralPosition> findByOrganizationIdAndLoanIdIn(Long organizationId, Collection<Long> loanIds);
+
 }

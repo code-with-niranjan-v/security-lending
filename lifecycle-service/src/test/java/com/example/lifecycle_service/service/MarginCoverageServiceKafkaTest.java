@@ -40,6 +40,7 @@ class MarginCoverageServiceKafkaTest {
   void setUp() {
     service = new MarginCoverageService(
         loanRepository,
+        org.mockito.Mockito.mock(RecallRequestRecordRepository.class),
         mslaRepository,
         collateralPositionRepository,
         loanValuationRepository,

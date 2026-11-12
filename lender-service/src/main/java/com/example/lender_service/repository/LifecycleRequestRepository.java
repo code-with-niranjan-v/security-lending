@@ -12,4 +12,6 @@ public interface LifecycleRequestRepository extends JpaRepository<LifecycleReque
 
   Optional<LifecycleRequest> findByOrganizationIdAndClientRequestId(
       Long organizationId, String clientRequestId);
+  List<LifecycleRequest> findByOrganizationIdAndLoanIdIn(Long organizationId, Collection<Long> loanIds);
+
 }

@@ -14,4 +14,6 @@ public interface LoanValuationRepository extends JpaRepository<LoanValuation, Lo
 
   Optional<LoanValuation> findByOrganizationIdAndOwnerReferenceId(
       Long organizationId, Long ownerReferenceId);
+  List<LoanValuation> findByOrganizationIdAndLoanIdIn(Long organizationId, Collection<Long> loanIds);
+
 }
