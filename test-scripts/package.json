@@ -1,0 +1,13 @@
+{
+  "name": "lender-api-test-scripts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:dashboard": "node read-dashboard.js",
+    "test:agreements": "node read-agreements.js",
+    "test:loans": "node read-loans.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.9"
+  }
+}
