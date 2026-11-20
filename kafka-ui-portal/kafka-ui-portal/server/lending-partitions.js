@@ -2,6 +2,9 @@ import net from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 import { lendingTopics } from "./config.js";
 
+// The desks publish these events without an application consumer.
+const publishOnlyTopics = new Set(["borrower.events.v1", "lender.events.v1"]);
+
 async function listening(port) {
   return new Promise((resolve) => {
     const socket = net.createConnection({ host: "127.0.0.1", port });
@@ -61,9 +64,10 @@ export async function lendingPartitionMigration(kafka, { apply = false } = {}) {
         );
     }
   }
-  const { additions, preservedDeadLetters } = await kafka.admin(
-    async (admin) => {
+  const { additions, preservedDeadLetters, preservedPublishedEvents } =
+    await kafka.admin(async (admin) => {
       const preservedDeadLetters = [];
+      const preservedPublishedEvents = [];
       const { groups } = await admin.listGroups();
       const committedPartitions = new Set();
       const knownGroups = groups.map((group) => group.groupId);
@@ -105,6 +109,12 @@ export async function lendingPartitionMigration(kafka, { apply = false } = {}) {
               preservedDeadLetters.push(`${topic.name}/${partition.partition}`);
               continue;
             }
+            if (publishOnlyTopics.has(topic.name)) {
+              preservedPublishedEvents.push(
+                `${topic.name}/${partition.partition}`,
+              );
+              continue;
+            }
             throw new Error(
               `Retained records without a committed consumer offset: ${topic.name}/${partition.partition}. Resolve them before migration.`,
             );
@@ -120,10 +130,13 @@ export async function lendingPartitionMigration(kafka, { apply = false } = {}) {
           validateOnly: false,
         });
       }
-      return { additions, preservedDeadLetters };
-    },
-  );
+      return { additions, preservedDeadLetters, preservedPublishedEvents };
+    });
   if (apply && additions.length)
     await waitForPartitionLeaders(kafka, additions);
-  return { topicsToResize: additions.length, preservedDeadLetters };
+  return {
+    topicsToResize: additions.length,
+    preservedDeadLetters,
+    preservedPublishedEvents,
+  };
 }

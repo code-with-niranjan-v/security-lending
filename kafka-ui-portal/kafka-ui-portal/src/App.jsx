@@ -113,14 +113,17 @@ export default function App() {
         "/topics/lending-migration",
         apply ? { confirmDrained: true } : undefined,
       );
-      const { topicsToResize, preservedDeadLetters } = result;
+      const { topicsToResize, preservedDeadLetters, preservedPublishedEvents = [] } = result;
       const summary = apply
         ? `${topicsToResize} lending topics migrated to six partitions.`
         : `Kafka backlog checks passed. ${topicsToResize} lending topics need resizing.`;
       const retained = preservedDeadLetters.length
         ? ` Retained dead-letter records preserved in ${preservedDeadLetters.length} partitions.`
         : "";
-      setMigrationResult({ text: summary + retained });
+      const published = preservedPublishedEvents.length
+        ? ` Published events preserved in ${preservedPublishedEvents.length} partitions.`
+        : "";
+      setMigrationResult({ text: summary + retained + published });
       if (apply)
         await refresh().catch((error) =>
           setNotice({ error: true, text: error.message }),

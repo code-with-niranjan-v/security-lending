@@ -13,6 +13,8 @@ const kafka = new KafkaService(createConfig());
 const result = await lendingPartitionMigration(kafka, { apply: true });
 for (const partition of result.preservedDeadLetters)
   console.warn(`Preserving retained dead-letter records: ${partition}.`);
+for (const partition of result.preservedPublishedEvents)
+  console.warn(`Preserving retained published events: ${partition}.`);
 console.log(
   `${result.topicsToResize} topics increased to six partitions. Existing records preserved.`,
 );
