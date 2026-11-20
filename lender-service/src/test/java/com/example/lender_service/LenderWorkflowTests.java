@@ -2876,6 +2876,30 @@ class LenderWorkflowTests {
   }
 
   @Test
+  void buyinLoanCloseoutCanApplyAnEntireCashCollateralLot() throws Exception {
+    var org = organization();
+    var conn = connection(org);
+    var loan = activeLoan(org, conn, security("100"), true);
+    var lot = positions.findByConnectionIdAndBorrowerPositionId(conn.getId(), 400L)
+        .orElseThrow();
+    var def = reportDefaultForBuyinTest(org, loan, ids.incrementAndGet(), ids.incrementAndGet());
+    receivedBuyinForCloseout(org, loan, def, 100, "109.95");
+
+    String path = "/api/v1/organizations/" + org.getId()
+        + "/defaults/" + def.getId() + "/close-loan";
+    mvc.perform(post(path)
+        .contentType("application/json")
+        .content("{\"reference\":\"FULL-CASH-CLOSE\"}"))
+        .andExpect(status().isOk());
+
+    assertEquals("CLOSED", loan.getStatus());
+    assertEquals("APPLIED", lot.getStatus());
+    assertEquals(0, lot.getCashAmount().signum());
+    assertEquals(0, accounts.findByOrganizationId(org.getId()).orElseThrow()
+        .getCashCollateralHeld().signum());
+  }
+
+  @Test
   void buyinLoanCloseoutAppliesCostReleasesSurplusAndQueuesFinalBillingExactlyOnce() throws Exception {
     var org = organization();
     var conn = connection(org);
