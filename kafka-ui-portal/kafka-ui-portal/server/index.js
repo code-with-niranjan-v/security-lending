@@ -1,14 +1,16 @@
 import express from "express";
-import { integer } from "./errors.js";
+import { HttpError, integer } from "./errors.js";
 import path from "node:path";
 import fs from "node:fs";
 import { createConfig, lendingTopics } from "./config.js";
 import { BrokerManager } from "./broker.js";
 import { KafkaService } from "./kafka.js";
+import { lendingPartitionMigration } from "./lending-partitions.js";
 const config = createConfig(),
   broker = new BrokerManager(config),
   kafka = new KafkaService(config),
   app = express();
+let migrating = false;
 app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
 app.use("/api", (req, res, next) => {
@@ -19,6 +21,8 @@ app.use("/api", (req, res, next) => {
       .json({ error: "Only local portal origins are permitted." });
   if (["POST", "DELETE"].includes(req.method) && !req.is("application/json"))
     return res.status(415).json({ error: "Use application/json." });
+  if (migrating && ["POST", "DELETE"].includes(req.method))
+    return res.status(409).json({ error: "Lending topic migration is running." });
   next();
 });
 const route = (fn) => (req, res, next) =>
@@ -97,6 +101,30 @@ app.post(
         )
         .map((t) => t.name),
     });
+  }),
+);
+app.get(
+  "/api/topics/lending-migration",
+  route(async (_req, res) => {
+    res.json(await lendingPartitionMigration(kafka));
+  }),
+);
+app.post(
+  "/api/topics/lending-migration",
+  route(async (req, res) => {
+    if (!config.local)
+      throw new HttpError(403, "Relay migration requires a local Kafka broker.");
+    if (req.body?.confirmDrained !== true)
+      throw new HttpError(
+        400,
+        "Confirm that outboxes are drained and services are stopped.",
+      );
+    migrating = true;
+    try {
+      res.json(await lendingPartitionMigration(kafka, { apply: true }));
+    } finally {
+      migrating = false;
+    }
   }),
 );
 app.delete(

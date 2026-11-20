@@ -103,6 +103,23 @@ export default function App() {
       return api("/kafka/start", {});
     });
   }
+  async function migrateLendingTopics(apply) {
+    const label = apply ? "Migrating lending topics" : "Checking Kafka backlog";
+    return action(label, async () => {
+      const result = await api(
+        "/topics/lending-migration",
+        apply ? { confirmDrained: true } : undefined,
+      );
+      const { topicsToResize, preservedDeadLetters } = result;
+      const summary = apply
+        ? `${topicsToResize} lending topics migrated to six partitions.`
+        : `Kafka backlog checks passed. ${topicsToResize} lending topics need resizing.`;
+      const retained = preservedDeadLetters.length
+        ? ` Retained dead-letter records preserved in ${preservedDeadLetters.length} partitions.`
+        : "";
+      return { message: summary + retained };
+    });
+  }
   async function browse(name = selected) {
     if (!name) return;
     setSelected(name);
@@ -817,6 +834,33 @@ export default function App() {
                   Set up lending topics →
                 </button>
               </section>
+              <section className="panel settings">
+                <div className="panel-heading">
+                  <div>
+                    <h2>Lending topic migration</h2>
+                    <p>
+                      Increase existing lending topics to six partitions for
+                      discovery mode.
+                    </p>
+                  </div>
+                </div>
+                <div className="settings-actions">
+                  <button
+                    className="button"
+                    disabled={!online || !!busy}
+                    onClick={() => migrateLendingTopics(false)}
+                  >
+                    Check Kafka backlog
+                  </button>
+                  <button
+                    className="button primary"
+                    disabled={!online || !health?.local || !!busy}
+                    onClick={() => setModal({ type: "migrate" })}
+                  >
+                    Migrate lending topics
+                  </button>
+                </div>
+              </section>
             </>
           )}
           <footer className="page-footer">
@@ -845,10 +889,43 @@ export default function App() {
               detail: "Topic details",
               stop: "Stop local broker",
               delete: "Delete topic",
+              migrate: "Migrate lending topics",
             }[modal.type]
           }
           close={() => !busy && setModal(null)}
         >
+          {modal.type === "migrate" && (
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setModal(null);
+                await migrateLendingTopics(true);
+              }}
+            >
+              <p className="form-intro">
+                Relay rechecks Kafka backlog before resizing. Existing records,
+                including dead-letter records, are preserved.
+              </p>
+              <label className="migration-confirmation">
+                <input type="checkbox" required />
+                I paused producers, drained database outboxes and FIX queues,
+                and stopped the backends, FIX adapters, and gateway. Kafka is
+                still running.
+              </label>
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => setModal(null)}
+                >
+                  Cancel
+                </button>
+                <button className="button primary" disabled={!!busy}>
+                  Start migration
+                </button>
+              </div>
+            </form>
+          )}
           {modal.type === "create" && (
             <form
               onSubmit={async (e) => {

@@ -885,6 +885,15 @@ label textarea {
 .modal label {
   margin: 20px 0;
 }
+.modal .migration-confirmation {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.migration-confirmation input {
+  width: auto;
+  margin: 0;
+}
 .modal-actions {
   display: flex;
   justify-content: flex-end;
