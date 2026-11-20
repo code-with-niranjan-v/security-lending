@@ -40,6 +40,7 @@ export default function App() {
     [filter, setFilter] = useState("All topics"),
     [busy, setBusy] = useState(""),
     [notice, setNotice] = useState(null),
+    [migrationResult, setMigrationResult] = useState(null),
     [modal, setModal] = useState(null),
     [selected, setSelected] = useState(""),
     [messages, setMessages] = useState([]),
@@ -105,7 +106,9 @@ export default function App() {
   }
   async function migrateLendingTopics(apply) {
     const label = apply ? "Migrating lending topics" : "Checking Kafka backlog";
-    return action(label, async () => {
+    setBusy(label);
+    setMigrationResult(null);
+    try {
       const result = await api(
         "/topics/lending-migration",
         apply ? { confirmDrained: true } : undefined,
@@ -117,8 +120,16 @@ export default function App() {
       const retained = preservedDeadLetters.length
         ? ` Retained dead-letter records preserved in ${preservedDeadLetters.length} partitions.`
         : "";
-      return { message: summary + retained };
-    });
+      setMigrationResult({ text: summary + retained });
+      if (apply)
+        await refresh().catch((error) =>
+          setNotice({ error: true, text: error.message }),
+        );
+    } catch (error) {
+      setMigrationResult({ error: true, text: error.message });
+    } finally {
+      setBusy("");
+    }
   }
   async function browse(name = selected) {
     if (!name) return;
@@ -355,6 +366,47 @@ export default function App() {
           )}
           {page === "Overview" && (
             <>
+              <section className="panel settings migration-panel">
+                <div className="panel-heading">
+                  <div>
+                    <h2>Lending topic migration</h2>
+                    <p>
+                      Increase existing lending topics to six partitions for
+                      discovery mode.
+                    </p>
+                  </div>
+                </div>
+                {!online && (
+                  <p>Connect Relay to Kafka to check backlog or start migration.</p>
+                )}
+                {online && !health.local && (
+                  <p>
+                    Migration requires a local broker. Relay is connected to{" "}
+                    <strong>{health.bootstrap}</strong>.
+                  </p>
+                )}
+                <div className="settings-actions">
+                  <button
+                    className="button"
+                    disabled={!online || !!busy}
+                    onClick={() => migrateLendingTopics(false)}
+                  >
+                    Check Kafka backlog
+                  </button>
+                  <button
+                    className="button primary"
+                    disabled={!online || !health?.local || !!busy}
+                    onClick={() => setModal({ type: "migrate" })}
+                  >
+                    Migrate lending topics
+                  </button>
+                </div>
+                {migrationResult && (
+                  <p role={migrationResult.error ? "alert" : "status"}>
+                    {migrationResult.text}
+                  </p>
+                )}
+              </section>
               <section className="panel setup-card" style={{marginTop:0,marginBottom:24}}>
                 <span>◈</span>
                 <div><h2>Set up topics for all lending services</h2><p>Create the 16 borrower, lender, lifecycle, market-data and dead-letter topics. Existing topics are preserved.</p></div>
@@ -833,33 +885,6 @@ export default function App() {
                 >
                   Set up lending topics →
                 </button>
-              </section>
-              <section className="panel settings">
-                <div className="panel-heading">
-                  <div>
-                    <h2>Lending topic migration</h2>
-                    <p>
-                      Increase existing lending topics to six partitions for
-                      discovery mode.
-                    </p>
-                  </div>
-                </div>
-                <div className="settings-actions">
-                  <button
-                    className="button"
-                    disabled={!online || !!busy}
-                    onClick={() => migrateLendingTopics(false)}
-                  >
-                    Check Kafka backlog
-                  </button>
-                  <button
-                    className="button primary"
-                    disabled={!online || !health?.local || !!busy}
-                    onClick={() => setModal({ type: "migrate" })}
-                  >
-                    Migrate lending topics
-                  </button>
-                </div>
               </section>
             </>
           )}

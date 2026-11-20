@@ -762,6 +762,19 @@ label textarea {
   display: flex;
   gap: 10px;
 }
+.migration-panel {
+  margin-bottom: 24px;
+}
+.migration-panel .settings-actions {
+  flex-wrap: wrap;
+}
+.migration-panel > p {
+  margin: 0;
+  padding: 0 25px 16px;
+}
+.migration-panel > [role="alert"] {
+  color: #a32135;
+}
 .setup-card {
   margin-top: 24px;
   display: flex;
