@@ -13,3 +13,6 @@ replay_pid*
 **/runtime/
 
 # Application properties are intentionally version controlled.
+
+# Maven outputs, including discovery and runtime projects.
+**/target/

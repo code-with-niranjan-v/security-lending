@@ -24,6 +24,9 @@ import tools.jackson.databind.json.JsonMapper;
 @Transactional
 public class ReturnFailureRecoveryService {
 
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  private org.springframework.cloud.client.loadbalancer.LoadBalancerClient discovery;
+
   private final BorrowerRepository db;
   private final BorrowerEventProjectionService projections;
   private final LendingService lending;
@@ -79,6 +82,14 @@ public class ReturnFailureRecoveryService {
     JsonNode response;
     try {
       response = RestClient.builder()
+        .requestInterceptor((outboundRequest, outboundBody, execution) ->
+          com.example.platform.DiscoveryHttp.execute(
+            discovery,
+            outboundRequest,
+            outboundBody,
+            execution
+          )
+        )
         .baseUrl(lenderUrl)
         .requestFactory(factory)
         .build()

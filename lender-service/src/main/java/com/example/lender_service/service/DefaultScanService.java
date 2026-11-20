@@ -11,6 +11,9 @@ import tools.jackson.databind.JsonNode;
 @Service
 public class DefaultScanService {
 
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  private org.springframework.cloud.client.loadbalancer.LoadBalancerClient discovery;
+
   private final TenantService tenants;
   private final EventService events;
   private final RestClient client;
@@ -29,7 +32,18 @@ public class DefaultScanService {
       new org.springframework.http.client.SimpleClientHttpRequestFactory();
     factory.setConnectTimeout(2000);
     factory.setReadTimeout(60000);
-    client = RestClient.builder().baseUrl(url).requestFactory(factory).build();
+    client = RestClient.builder()
+      .requestInterceptor((outboundRequest, outboundBody, execution) ->
+        com.example.platform.DiscoveryHttp.execute(
+          discovery,
+          outboundRequest,
+          outboundBody,
+          execution
+        )
+      )
+      .baseUrl(url)
+      .requestFactory(factory)
+      .build();
   }
 
   public JsonNode run(long org) {

@@ -13,6 +13,9 @@ import tools.jackson.databind.JsonNode;
 @Service
 public class WorkspaceProvisioner {
 
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  private org.springframework.cloud.client.loadbalancer.LoadBalancerClient discovery;
+
   private final String lender, borrower, key;
 
   public WorkspaceProvisioner(
@@ -36,6 +39,14 @@ public class WorkspaceProvisioner {
     factory.setReadTimeout(10000);
     try {
       var response = RestClient.builder()
+        .requestInterceptor((outboundRequest, outboundBody, execution) ->
+          com.example.platform.DiscoveryHttp.execute(
+            discovery,
+            outboundRequest,
+            outboundBody,
+            execution
+          )
+        )
         .baseUrl(type.equals("BORROWER") ? borrower : lender)
         .requestFactory(factory)
         .build()

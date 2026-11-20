@@ -17,38 +17,82 @@ import tools.jackson.databind.JsonNode;
 
 @Component
 public class FeeMarketPrices {
+
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  private org.springframework.cloud.client.loadbalancer.LoadBalancerClient discovery;
+
   private final RestClient market;
 
-  public FeeMarketPrices(@Value("${lifecycle.market-data-url:http://localhost:8080}") String url) {
+  public FeeMarketPrices(
+    @Value("${lifecycle.market-data-url:http://localhost:8080}") String url
+  ) {
     var requestFactory = new SimpleClientHttpRequestFactory();
     requestFactory.setConnectTimeout(Duration.ofSeconds(3));
     requestFactory.setReadTimeout(Duration.ofSeconds(10));
-    market = RestClient.builder().baseUrl(url).requestFactory(requestFactory).build();
+    market = RestClient.builder()
+      .requestInterceptor((outboundRequest, outboundBody, execution) ->
+        com.example.platform.DiscoveryHttp.execute(
+          discovery,
+          outboundRequest,
+          outboundBody,
+          execution
+        )
+      )
+      .baseUrl(url)
+      .requestFactory(requestFactory)
+      .build();
   }
 
-  public NavigableMap<Instant, BigDecimal> history(FeeSecurity security, Instant cutoff, boolean demo) {
+  public NavigableMap<Instant, BigDecimal> history(
+    FeeSecurity security,
+    Instant cutoff,
+    boolean demo
+  ) {
     var marks = new TreeMap<Instant, BigDecimal>();
     try {
-      var candles = market.get()
-          .uri(uri -> uri.path("/api/v1/security-data/history")
-              .queryParam("symbol", security.getSymbol())
-              .queryParam("exchange", security.getExchange()).build())
-          .retrieve().body(JsonNode.class);
+      var candles = market
+        .get()
+        .uri(uri ->
+          uri
+            .path("/api/v1/security-data/history")
+            .queryParam("symbol", security.getSymbol())
+            .queryParam("exchange", security.getExchange())
+            .build()
+        )
+        .retrieve()
+        .body(JsonNode.class);
       if (candles != null && candles.isArray()) {
         for (var candle : candles) {
-          if (!candle.hasNonNull("close") || !candle.hasNonNull("tradedDateTimestamp")) continue;
-          Instant completedAt = Instant.parse(candle.get("tradedDateTimestamp").asText()).plusSeconds(60);
+          if (
+            !candle.hasNonNull("close") ||
+            !candle.hasNonNull("tradedDateTimestamp")
+          ) continue;
+          Instant completedAt = Instant.parse(
+            candle.get("tradedDateTimestamp").asText()
+          ).plusSeconds(60);
           BigDecimal close = candle.get("close").decimalValue();
-          if (!completedAt.isAfter(cutoff) && close.signum() > 0) marks.put(completedAt, close);
+          if (!completedAt.isAfter(cutoff) && close.signum() > 0) marks.put(
+            completedAt,
+            close
+          );
         }
       }
     } catch (RestClientException exception) {
       if (!demo) {
-        throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Market data unavailable", exception);
+        throw new ResponseStatusException(
+          HttpStatus.SERVICE_UNAVAILABLE,
+          "Market data unavailable",
+          exception
+        );
       }
     }
-    if (demo && security.getPrice() != null && security.getPrice().signum() > 0
-        && security.getPriceAt() != null && !security.getPriceAt().isAfter(cutoff)) {
+    if (
+      demo &&
+      security.getPrice() != null &&
+      security.getPrice().signum() > 0 &&
+      security.getPriceAt() != null &&
+      !security.getPriceAt().isAfter(cutoff)
+    ) {
       marks.put(security.getPriceAt(), security.getPrice());
     }
     return marks;

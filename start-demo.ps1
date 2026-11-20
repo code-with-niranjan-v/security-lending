@@ -1,11 +1,22 @@
 param(
     [switch]$Plan,
     [switch]$Lendora,
+    [switch]$Discovery,
+    [ValidateRange(1, 2)][int]$Replicas = 2,
+    [ValidateSet('Start', 'Status', 'Stop', 'Restart')][string]$Action = 'Start',
+    [string]$Instance,
     [ValidateRange(10, 1800)]
     [int]$StartupTimeoutSeconds = 240
 )
 
 $ErrorActionPreference = 'Stop'
+if ($Discovery) {
+    if ($Action -eq 'Start' -and -not $Lendora) { throw 'Use -Lendora with -Discovery to enable the authenticated workspaces.' }
+    & "$PSScriptRoot\scripts\discovery-demo.ps1" -Plan:$Plan -Replicas $Replicas -Action $Action -Instance $Instance -StartupTimeoutSeconds $StartupTimeoutSeconds
+    exit $LASTEXITCODE
+}
+if ($Action -ne 'Start' -or $Instance) { throw 'Process management requires -Discovery.' }
+
 
 $portal = @{
     Name = 'Kafka UI'

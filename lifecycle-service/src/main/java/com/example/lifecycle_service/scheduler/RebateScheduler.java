@@ -12,19 +12,40 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 @Slf4j
 @ConditionalOnProperty(
-    prefix = "lifecycle",
-    name = {"kafka-enabled", "accrual-jobs-enabled"},
-    havingValue = "true",
-    matchIfMissing = true)
+  prefix = "lifecycle",
+  name = { "kafka-enabled", "accrual-jobs-enabled" },
+  havingValue = "true",
+  matchIfMissing = true
+)
 public class RebateScheduler {
+
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  private com.example.platform.WorkCoordinator coordinator;
+
+  @org.springframework.beans.factory.annotation.Value(
+    "${lifecycle.rebate-accrual-cron:0 15 15 * * *}"
+  )
+  private String cron;
+
   private final LoanRepository loans;
   private final RebateLifecycleService rebates;
 
-  @Scheduled(cron = "${lifecycle.rebate-accrual-cron:0 15 15 * * *}", zone = "Asia/Kolkata")
+  @Scheduled(
+    cron = "${lifecycle.rebate-accrual-cron:0 15 15 * * *}",
+    zone = "Asia/Kolkata"
+  )
   public void processDueRebates() {
     for (long loanId : loans.findRebateLoanIds()) {
       try {
-        rebates.process(loanId);
+        com.example.platform.ScheduledWork.run(
+          coordinator,
+          "rebate",
+          loanId,
+          cron,
+          () -> {
+            rebates.process(loanId);
+          }
+        );
       } catch (RuntimeException exception) {
         log.error("Could not process rebates for loan {}", loanId, exception);
       }

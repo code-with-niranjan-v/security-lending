@@ -47,3 +47,7 @@ now uses a maximum of 5 pooled connections with 1 idle connection; restart all J
 services to apply this. The seven-process Lendora setup has a total pool limit of 35,
 plus other clients and startup connections. `DB_POOL_MAX_SIZE` and `DB_POOL_MIN_IDLE`
 override the per-process defaults. See [connection recovery and diagnostic SQL](LENDORA_AUTH.md#postgresql-sorry-too-many-clients-already).
+
+## Optional service discovery and replicas
+
+Use `start-demo.cmd -Lendora -Discovery -Replicas 2` for Eureka, Gateway and two instances of each core service. Existing single-process commands still work. See [SCALABILITY.md](SCALABILITY.md) for prerequisites, safe Kafka migration, management commands and failover tests.

@@ -12,6 +12,9 @@ import tools.jackson.databind.JsonNode;
 @Service
 public class RegisteredBorrowerClient {
 
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  private org.springframework.cloud.client.loadbalancer.LoadBalancerClient discovery;
+
   public record BorrowerEntry(
     @Positive long directoryId,
     @Positive long borrowerOrganizationId,
@@ -38,6 +41,14 @@ public class RegisteredBorrowerClient {
     factory.setConnectTimeout(2000);
     factory.setReadTimeout(5000);
     this.client = RestClient.builder()
+      .requestInterceptor((outboundRequest, outboundBody, execution) ->
+        com.example.platform.DiscoveryHttp.execute(
+          discovery,
+          outboundRequest,
+          outboundBody,
+          execution
+        )
+      )
       .baseUrl(url)
       .requestFactory(factory)
       .build();

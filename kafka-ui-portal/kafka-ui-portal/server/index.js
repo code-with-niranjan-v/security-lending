@@ -1,4 +1,5 @@
 import express from "express";
+import { integer } from "./errors.js";
 import path from "node:path";
 import fs from "node:fs";
 import { createConfig, lendingTopics } from "./config.js";
@@ -78,16 +79,23 @@ app.post(
 );
 app.post(
   "/api/topics/lending-preset",
-  route(async (_req, res) => {
-    const existing = new Set((await kafka.topics()).map((t) => t.name));
+  route(async (req, res) => {
+    const partitions = integer(req.body.partitions ?? 1, "Partitions", 1, 32);
+    const current = await kafka.topics();
+    const existing = new Set(current.map((t) => t.name));
     let created = 0;
     for (const topic of lendingTopics)
       if (!existing.has(topic)) {
-        await kafka.create({ topic });
+        await kafka.create({ topic, partitions });
         created++;
       }
     res.json({
       message: `${created} lending topics created. Existing topics preserved.`,
+      undersized: current
+        .filter(
+          (t) => lendingTopics.includes(t.name) && t.partitions < partitions,
+        )
+        .map((t) => t.name),
     });
   }),
 );

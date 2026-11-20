@@ -11,6 +11,9 @@ import tools.jackson.databind.JsonNode;
 @Service
 public class LendoraRouteDirectory {
 
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  private org.springframework.cloud.client.loadbalancer.LoadBalancerClient discovery;
+
   public record Entry(
     String type,
     long organizationId,
@@ -30,6 +33,14 @@ public class LendoraRouteDirectory {
     factory.setConnectTimeout(2000);
     factory.setReadTimeout(3000);
     client = RestClient.builder()
+      .requestInterceptor((outboundRequest, outboundBody, execution) ->
+        com.example.platform.DiscoveryHttp.execute(
+          discovery,
+          outboundRequest,
+          outboundBody,
+          execution
+        )
+      )
       .baseUrl(properties.getLendoraUrl())
       .requestFactory(factory)
       .build();

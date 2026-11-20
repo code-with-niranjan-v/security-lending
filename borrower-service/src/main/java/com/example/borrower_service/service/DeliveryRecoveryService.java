@@ -19,6 +19,9 @@ import tools.jackson.databind.json.JsonMapper;
 @RequiredArgsConstructor
 public class DeliveryRecoveryService {
 
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  private org.springframework.cloud.client.loadbalancer.LoadBalancerClient discovery;
+
   private final EntityManager em;
   private final Clock clock;
 
@@ -42,6 +45,14 @@ public class DeliveryRecoveryService {
     factory.setConnectTimeout(1500);
     factory.setReadTimeout(2500);
     return RestClient.builder()
+      .requestInterceptor((outboundRequest, outboundBody, execution) ->
+        com.example.platform.DiscoveryHttp.execute(
+          discovery,
+          outboundRequest,
+          outboundBody,
+          execution
+        )
+      )
       .baseUrl(source.equals("BORROWER_FIX") ? borrowerAdapter : lenderAdapter)
       .requestFactory(factory)
       .build();

@@ -15,6 +15,9 @@ import tools.jackson.databind.JsonNode;
 @Configuration
 public class LendoraAccessConfig implements WebMvcConfigurer {
 
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  private org.springframework.cloud.client.loadbalancer.LoadBalancerClient discovery;
+
   private final com.example.lender_service.service.WorkspaceAdminAccess admins;
   private final boolean enabled;
   private final String url;
@@ -77,6 +80,15 @@ public class LendoraAccessConfig implements WebMvcConfigurer {
             factory.setReadTimeout(2500);
             try {
               var response = RestClient.builder()
+                .requestInterceptor(
+                  (outboundRequest, outboundBody, execution) ->
+                    com.example.platform.DiscoveryHttp.execute(
+                      discovery,
+                      outboundRequest,
+                      outboundBody,
+                      execution
+                    )
+                )
                 .baseUrl(url)
                 .requestFactory(factory)
                 .build()

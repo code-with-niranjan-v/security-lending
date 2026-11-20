@@ -19,6 +19,9 @@ import tools.jackson.databind.json.JsonMapper;
 @RequiredArgsConstructor
 public class DeliveryRecoveryService {
 
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  private org.springframework.cloud.client.loadbalancer.LoadBalancerClient discovery;
+
   private final EntityManager em;
   private final Clock clock;
   private final JsonMapper json = JsonMapper.builder().build();
@@ -38,6 +41,14 @@ public class DeliveryRecoveryService {
     factory.setConnectTimeout(1500);
     factory.setReadTimeout(2500);
     return RestClient.builder()
+      .requestInterceptor((outboundRequest, outboundBody, execution) ->
+        com.example.platform.DiscoveryHttp.execute(
+          discovery,
+          outboundRequest,
+          outboundBody,
+          execution
+        )
+      )
       .baseUrl(source.equals("BORROWER_FIX") ? borrowerAdapter : lenderAdapter)
       .requestFactory(factory)
       .build();
@@ -80,9 +91,12 @@ public class DeliveryRecoveryService {
     int attempts,
     String error
   ) {
-    if(ValuationDeliveryState.resolveTerminal(em,event) || BuyinDeliveryState.resolveTerminal(em,event))return;
-    ValuationDeliveryState.fail(em,event,error);
-    BuyinDeliveryState.fail(em,event,error);
+    if (
+      ValuationDeliveryState.resolveTerminal(em, event) ||
+      BuyinDeliveryState.resolveTerminal(em, event)
+    ) return;
+    ValuationDeliveryState.fail(em, event, error);
+    BuyinDeliveryState.fail(em, event, error);
     String key = source + ":" + stage + ":" + transportId;
     var row = em.find(
       DeliveryFailure.class,
@@ -262,8 +276,8 @@ public class DeliveryRecoveryService {
         HttpStatus.CONFLICT,
         "Delivery status changed; refresh"
       );
-      ValuationDeliveryState.decide(em,event,retry);
-      BuyinDeliveryState.decide(em,event,retry);
+      ValuationDeliveryState.decide(em, event, retry);
+      BuyinDeliveryState.decide(em, event, retry);
       event.setStatus(retry ? "PENDING" : "CLOSED");
       if (retry) {
         event.setAttempts(0);
