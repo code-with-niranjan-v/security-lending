@@ -85,7 +85,7 @@ app.post(
   "/api/topics/lending-preset",
   route(async (req, res) => {
     const partitions = integer(req.body.partitions ?? 1, "Partitions", 1, 32);
-    const current = await kafka.topics();
+    const current = await kafka.topics(lendingTopics);
     const existing = new Set(current.map((t) => t.name));
     let created = 0;
     for (const topic of lendingTopics)
@@ -96,9 +96,7 @@ app.post(
     res.json({
       message: `${created} lending topics created. Existing topics preserved.`,
       undersized: current
-        .filter(
-          (t) => lendingTopics.includes(t.name) && t.partitions < partitions,
-        )
+        .filter((t) => t.partitions < partitions)
         .map((t) => t.name),
     });
   }),
@@ -158,7 +156,10 @@ if (fs.existsSync(dist)) {
 app.use((error, _req, res, _next) =>
   res
     .status(error.status || 503)
-    .json({ error: error.message || "Kafka operation failed." }),
+    .json({
+      error: error.message || "Kafka operation failed.",
+      code: error.type,
+    }),
 );
 app.listen(config.port, config.host, () =>
   console.log(`Relay Kafka portal: http://${config.host}:${config.port}`),

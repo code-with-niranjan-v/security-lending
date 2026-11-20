@@ -32,9 +32,11 @@ export class KafkaService {
   async cluster() {
     return this.admin((a) => a.describeCluster());
   }
-  async topics() {
+  async topics(only) {
     return this.admin(async (a) => {
-      const names = (await a.listTopics()).filter((n) => !n.startsWith("__"));
+      const names = (await a.listTopics()).filter(
+        (name) => !name.startsWith("__") && (!only || only.includes(name)),
+      );
       if (!names.length) return [];
       const { topics } = await a.fetchTopicMetadata({ topics: names });
       return Promise.all(

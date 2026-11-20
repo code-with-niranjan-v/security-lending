@@ -41,6 +41,23 @@ function Wait-Check($Name, [scriptblock]$Check) {
     } while ($timer.Elapsed.TotalSeconds -lt $StartupTimeoutSeconds)
     throw "$Name was not ready within $StartupTimeoutSeconds seconds. Inspect runtime/discovery logs."
 }
+function Initialize-LendingTopics {
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        try {
+            return Invoke-RestMethod -Method Post 'http://localhost:3001/api/topics/lending-preset' -ContentType 'application/json' -Body '{"partitions":6}' -TimeoutSec 30
+        } catch {
+            $failure = $_
+            $detail = try { $failure.ErrorDetails.Message | ConvertFrom-Json -ErrorAction Stop } catch { $null }
+            if ($detail.code -notin @('LEADER_NOT_AVAILABLE', 'NOT_LEADER_FOR_PARTITION')) { throw }
+            if ($timer.Elapsed.TotalSeconds -ge $StartupTimeoutSeconds) {
+                throw "Kafka lending partition leaders were not ready within $StartupTimeoutSeconds seconds. Verify that Relay is connected to the intended broker on port 9092 and check the broker logs. Kafka reported: $($detail.error)"
+            }
+            Write-Host 'Waiting for Kafka lending partition leaders...'
+            Start-Sleep -Seconds 2
+        }
+    } while ($true)
+}
 function Initialize-Key {
     if ($env:LENDORA_PROVISIONING_KEY) { return }
     $path = Join-Path $root 'runtime\lendora-provisioning.key'
@@ -220,7 +237,7 @@ if (-not $health.online) {
     $null = Invoke-RestMethod -Method Post 'http://localhost:3001/api/kafka/start' -ContentType 'application/json' -Body '{}' -TimeoutSec 60
 }
 Wait-Check 'Kafka' { try { return (Invoke-RestMethod 'http://localhost:3001/api/health').online } catch { return $false } }
-$topics = Invoke-RestMethod -Method Post 'http://localhost:3001/api/topics/lending-preset' -ContentType 'application/json' -Body '{"partitions":6}'
+$topics = Initialize-LendingTopics
 if (@($topics.undersized).Count -gt 0) { throw 'Existing topics need a controlled partition migration. See SCALABILITY.md; no topic was deleted or resized.' }
 $order = 0
 foreach ($definition in $definitions) {
