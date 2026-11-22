@@ -183,6 +183,11 @@ $definitions = @()
 function Java-Definition($Name, $Folder, $Port, $Profiles = 'discovery', $Extra = '') {
     return @{ Name = $Name; Folder = $Folder; Port = $Port; Kind = 'java'; ReadyPath = '/actuator/health/readiness'; Executable = 'java.exe'; Arguments = "-Xms64m -Xmx384m -XX:MaxMetaspaceSize=192m -XX:ActiveProcessorCount=2 -jar target/$Folder-0.0.1-SNAPSHOT.jar --spring.profiles.active=$Profiles --server.port=$Port $Extra"; Environment = @{} }
 }
+function Get-JavaBuildFolders($Definitions) {
+    # Windows PowerShell does not expose hashtable keys to Select-Object -ExpandProperty.
+    $Definitions | Where-Object { $_['Kind'] -eq 'java' } |
+        ForEach-Object { $_['Folder'] } | Select-Object -Unique
+}
 $definitions += Java-Definition 'registry' 'discovery-server' 8761 '' '--management.endpoints.web.exposure.include=health,info,metrics'
 $definitions += Java-Definition 'market' 'market-data-service' 8080 'discovery' '--spring.jpa.hibernate.ddl-auto=update'
 $definitions += Java-Definition 'accounts-1' 'lendora-service' 8086
@@ -214,7 +219,7 @@ Json-Write (Join-Path $state 'manifest.json') @{ Instances = @($definitions | Fo
 Initialize-Key
 $env:LENDORA_ROUTING_ENABLED = 'true'
 # Build each jar once, regardless of replica count. Stop immediately on a failed build.
-foreach ($folder in @($definitions | Where-Object { $_.Kind -eq 'java' } | Select-Object -ExpandProperty Folder -Unique)) {
+foreach ($folder in (Get-JavaBuildFolders $definitions)) {
     Push-Location (Join-Path $root $folder)
     try { & .\mvnw.cmd -DskipTests package; if ($LASTEXITCODE -ne 0) { throw "Build failed: $folder" } } finally { Pop-Location }
 }

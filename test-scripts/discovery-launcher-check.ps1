@@ -18,6 +18,19 @@ if (-not (Owned-Process $PID $stamp)) { throw 'String ownership check failed.' }
 $date = [DateTime]::Parse($stamp)
 if (-not (Owned-Process $PID $date)) { throw 'JSON DateTime ownership check failed.' }
 if (Owned-Process $PID $date.AddSeconds(-1)) { throw 'Stale PID/start-time pair was accepted.' }
+$buildFolderFunction = $workerAst.Find({ param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-JavaBuildFolders'
+}, $true)
+Invoke-Expression $buildFolderFunction.Extent.Text
+$buildFolders = Get-JavaBuildFolders @(
+    @{ Kind = 'java'; Folder = 'lender-service' }
+    @{ Kind = 'java'; Folder = 'lender-service' }
+    @{ Kind = 'node'; Folder = 'lenddesk' }
+    @{ Kind = 'java'; Folder = 'api-gateway' }
+)
+if (($buildFolders -join ',') -ne 'lender-service,api-gateway') {
+    throw 'Java build folders must exclude frontends and build each replicated service once.'
+}
 function Runtime-Snapshot {
     return (@(Get-ChildItem (Join-Path $root 'runtime') -Recurse -File -ErrorAction SilentlyContinue |
         Sort-Object FullName | ForEach-Object { "$($_.FullName):$($_.Length):$($_.LastWriteTimeUtc.Ticks)" }) -join "`n")
