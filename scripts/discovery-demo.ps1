@@ -122,7 +122,9 @@ function Start-Owned($Definition) {
     $supervisor = Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Worker $name" -PassThru -WindowStyle Hidden
     Wait-Check $name {
         $status = Json-Read (Join-Path $state "$name.status.json")
-        if ($status.State -eq 'CrashLimit' -or $supervisor.HasExited) { throw "$name failed to start. Inspect runtime/discovery/$name.stderr.log" }
+        if ($status.State -eq 'CrashLimit' -or $supervisor.HasExited) {
+            throw "$name failed to start. Inspect runtime/discovery/$name.stdout.log and runtime/discovery/$name.stderr.log"
+        }
         try {
             $health = Invoke-RestMethod "http://localhost:$($Definition.Port)$($Definition.ReadyPath)" -TimeoutSec 3
             if ($Definition.Kind -eq 'java') { return $health.status -eq 'UP' }
