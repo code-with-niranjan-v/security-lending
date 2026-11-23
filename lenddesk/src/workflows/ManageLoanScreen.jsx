@@ -38,9 +38,13 @@ export default function ManageLoanScreen({ data, action, reason, onAction, onRea
     ['Reservation', loan.reservationId], ['Fee', rate(loan.feeBps)], ['Rebate', rate(loan.rebateBps)],
     ['Day count', loan.dayBasis ? `Actual/${loan.dayBasis}` : null], ['Billing', display(loan.billing)],
   ]
-  const metrics = [
+  const coverageMetric = ['Collateral coverage', percent(loan.coverage)]
+  const metrics = showRequests ? [
+    ['Outstanding', shares(loan.outstandingQuantity)], coverageMetric,
+    ['On-loan value', money(loan.marketValue, loan.currency)],
+  ] : [
     ['Requested quantity', shares(loan.quantity)], ['Outstanding quantity', shares(loan.outstandingQuantity)],
-    ['Loan market value', money(loan.marketValue, loan.currency)], ['Collateral coverage', percent(loan.coverage)],
+    ['Loan market value', money(loan.marketValue, loan.currency)], coverageMetric,
     ['Annual lending fee', rate(loan.feeBps)],
   ]
   const activityTable = (
@@ -65,13 +69,20 @@ export default function ManageLoanScreen({ data, action, reason, onAction, onRea
           <div className="manage-loan-title"><h1>Manage loan</h1><LoanBadge>{display(loan.status)}</LoanBadge></div>
           <p>{[loanId(loan.id), loan.symbol, loan.borrower].filter(Boolean).join(' · ')}</p>
         </div>
-        <Link to={workspace}>← Back to loan workspace</Link>
+        <Link className="manage-loan-back" to={workspace}>← Back to loan workspace</Link>
       </header>
       {notice && <p className="wf-notice" role="status">{notice}</p>}
-      <dl className="manage-loan-metrics">
-        {metrics.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd>
-          {label === 'Collateral coverage' && loan.requiredRatio != null && <small>Required {percent(loan.requiredRatio)}</small>}
-        </div>)}
+      <dl className={showRequests ? 'manage-loan-metrics manage-loan-context' : 'manage-loan-metrics'}>
+        {metrics.map(([label, value]) => {
+          const coverage = label === coverageMetric[0]
+          return <div key={label}>
+            <dt>{label}</dt>
+            <dd className={coverage && loan.coverageStatus === 'SUFFICIENT' ? 'manage-loan-sufficient' : undefined}>
+              {value}
+              {coverage && loan.requiredRatio != null && <small>Required {percent(loan.requiredRatio)}</small>}
+            </dd>
+          </div>
+        })}
       </dl>
       <nav className="manage-loan-tabs" aria-label="Manage loan sections">
         <button type="button" aria-pressed={!showRequests} disabled={busy} onClick={() => chooseView('operations')}>Loan operations</button>
