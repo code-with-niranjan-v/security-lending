@@ -1,6 +1,8 @@
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { LoanBadge } from '../components/loans/LoanCards'
 import { date, display, loanId, money, num } from '../utils/loanFormat'
+import { pendingLoanRequests } from '../utils/loanRequests'
+import PendingLoanRequests from './PendingLoanRequests'
 import './ManageLoanScreen.css'
 
 const percent = (value) => value == null ? '—' : `${num(value)}%`
@@ -8,32 +10,28 @@ const rate = (value) => value == null ? '—' : `${num(value)} bps`
 const shares = (value) => value == null ? '—' : `${num(value)} shares`
 
 export default function ManageLoanScreen({ data, action, reason, onAction, onReason, onSubmit, notice, error, busy }) {
-  const { loan, collateral, returns, activity } = data
+  const { loan, collateral, activity } = data
+  const [params, setParams] = useSearchParams()
+  const showRequests = params.get('view') === 'requests'
+  const requests = pendingLoanRequests(data)
+  function chooseView(view) {
+    onAction('')
+    setParams(previous => {
+      const next = new URLSearchParams(previous)
+      if (view === 'requests') next.set('view', view)
+      else next.delete('view')
+      return next
+    })
+  }
   const workspace = `/loans/${loanId(loan.id)}`
   const pending = loan.status === 'PENDING_REVIEW'
   const canSettle = loan.status === 'APPROVED_PENDING_SETTLEMENT'
-  const pledges = collateral.filter((lot) => lot.status === 'PLEDGE_PENDING')
-  const releases = collateral.filter((lot) => lot.status === 'RELEASE_REQUESTED')
-  const pendingReturns = returns.filter((entry) => entry.status === 'PENDING')
   const mainOperations = [
     { key: 'approve', label: 'Approve loan', enabled: pending, review: 'Review approval', detail: 'Approval records the lending decision. Settlement follows separately.', confirm: 'Confirm approval' },
     { key: 'reject', label: 'Reject loan', enabled: pending, review: 'Review rejection', detail: 'The reason will be sent to the borrower.', confirm: 'Confirm rejection', needsReason: true },
     { key: 'settle', label: 'Confirm settlement', enabled: canSettle, review: 'Review settlement', detail: 'Confirm only after verifying delivery of the securities to the borrower.', confirm: 'Confirm settlement' },
   ]
-  const requestGroups = [
-    { label: 'Collateral confirmations', rows: pledges, actions: [['collateralConfirm', 'Confirm receipt'], ['collateralReject', 'Reject pledge']] },
-    { label: 'Collateral releases', rows: releases, actions: [['collateralRelease', 'Accept release'], ['collateralReleaseReject', 'Reject release']] },
-    { label: 'Returns', rows: pendingReturns, actions: [['return', 'Confirm receipt'], ['returnReject', 'Reject return']] },
-  ]
-  const requestOperations = requestGroups.flatMap(({ rows, actions }) =>
-    rows.flatMap((entry) => actions.map(([type, label]) => ({
-      key: `${type}:${entry.id}`, label, enabled: true,
-      review: `Review ${label.toLowerCase()}`,
-      detail: `${type.startsWith('return') ? 'Return' : 'Collateral lot'} ${entry.id} · ${entry.assetType === 'CASH' ? money(entry.requestedReleaseCash ?? entry.cashAmount, loan.currency) : shares(entry.requestedReleaseQuantity ?? entry.quantity)}.`,
-      confirm: label, needsReason: type.endsWith('Reject'),
-    }))),
-  )
-  const selected = [...mainOperations, ...requestOperations].find((operation) => operation.key === action && operation.enabled)
+  const selected = mainOperations.find(operation => operation.key === action && operation.enabled)
   const facts = [
     ['Borrower', loan.borrower], ['Security', loan.symbol],
     ['Agreement', loan.mslaId ? <Link to={`/agreements/${loan.mslaId}`}>{loan.agreementNumber}</Link> : null],
@@ -45,6 +43,18 @@ export default function ManageLoanScreen({ data, action, reason, onAction, onRea
     ['Loan market value', money(loan.marketValue, loan.currency)], ['Collateral coverage', percent(loan.coverage)],
     ['Annual lending fee', rate(loan.feeBps)],
   ]
+  const activityTable = (
+    <article className="manage-loan-card">
+      <h2>{showRequests ? 'Recent activity' : 'Activity & settlement'}</h2>
+      <div className="manage-loan-table-scroll"><table className="wf-table">
+        <thead><tr><th>Time (IST)</th><th>Event</th><th>Reference</th></tr></thead>
+        <tbody>{(showRequests ? activity.slice(0, 5) : activity).map((entry, index) => <tr key={`${entry.at}:${index}`}>
+          <td>{date(entry.at)}</td><td>{entry.event.includes('_') ? display(entry.event) : entry.event}</td><td>{entry.reference ?? '—'}</td>
+        </tr>)}
+        {!activity.length && <tr><td colSpan={3}>No activity recorded.</td></tr>}</tbody>
+      </table></div>
+    </article>
+  )
   return (
     <section className="manage-loan wf-page">
       <nav className="wf-breadcrumb" aria-label="Breadcrumb">
@@ -53,7 +63,7 @@ export default function ManageLoanScreen({ data, action, reason, onAction, onRea
       <header className="manage-loan-header">
         <div>
           <div className="manage-loan-title"><h1>Manage loan</h1><LoanBadge>{display(loan.status)}</LoanBadge></div>
-          <p>{loanId(loan.id)} · {loan.symbol}</p>
+          <p>{[loanId(loan.id), loan.symbol, loan.borrower].filter(Boolean).join(' · ')}</p>
         </div>
         <Link to={workspace}>← Back to loan workspace</Link>
       </header>
@@ -63,6 +73,14 @@ export default function ManageLoanScreen({ data, action, reason, onAction, onRea
           {label === 'Collateral coverage' && loan.requiredRatio != null && <small>Required {percent(loan.requiredRatio)}</small>}
         </div>)}
       </dl>
+      <nav className="manage-loan-tabs" aria-label="Manage loan sections">
+        <button type="button" aria-pressed={!showRequests} disabled={busy} onClick={() => chooseView('operations')}>Loan operations</button>
+        <button type="button" aria-pressed={showRequests} disabled={busy} onClick={() => chooseView('requests')}>Pending requests ({requests.length})</button>
+      </nav>
+      {showRequests ? (
+        <PendingLoanRequests loan={loan} requests={requests} activity={activityTable} action={action} reason={reason}
+          onAction={onAction} onReason={onReason} onSubmit={onSubmit} error={error} busy={busy} />
+      ) : <>
       <div className="manage-loan-grid">
         <article className="manage-loan-card">
           <h2>Loan operations</h2>
@@ -73,17 +91,6 @@ export default function ManageLoanScreen({ data, action, reason, onAction, onRea
               <span aria-hidden="true">›</span>
             </button>)}
           </div>
-          <section className="manage-loan-section">
-            <h3>Pending requests</h3>
-            {requestGroups.map(({ label, rows, actions }) => <details key={label} className="manage-loan-request">
-              <summary>{label} <strong>{rows.length}</strong></summary>
-              {rows.length ? rows.map((entry) => <div key={entry.id} className="manage-loan-request-row">
-                <span>#{entry.id}</span>
-                {actions.map(([type, title]) => <button key={type} type="button" disabled={busy}
-                  aria-pressed={action === `${type}:${entry.id}`} onClick={() => onAction(`${type}:${entry.id}`)}>{title}</button>)}
-              </div>) : <p>No pending requests.</p>}
-            </details>)}
-          </section>
           {selected && <form className="manage-loan-section manage-loan-review" onSubmit={(event) => { event.preventDefault(); onSubmit() }}>
             <h3>{selected.review}</h3>
             <p>{selected.detail}</p>
@@ -112,15 +119,8 @@ export default function ManageLoanScreen({ data, action, reason, onAction, onRea
           </article>
         </aside>
       </div>
-      <article className="manage-loan-card">
-        <h2>Activity &amp; settlement</h2>
-        <div className="manage-loan-table-scroll"><table className="wf-table">
-          <thead><tr><th>Time (IST)</th><th>Event</th><th>Reference</th></tr></thead>
-          <tbody>{activity.length ? activity.map((entry, index) => <tr key={`${entry.at}:${index}`}>
-            <td>{date(entry.at)}</td><td>{entry.event.includes('_') ? display(entry.event) : entry.event}</td><td>{entry.reference ?? '—'}</td>
-          </tr>) : <tr><td colSpan={3}>No activity recorded.</td></tr>}</tbody>
-        </table></div>
-      </article>
+      {activityTable}
+      </>}
     </section>
   )
 }

@@ -44,7 +44,7 @@
 }
 .loan-workspace-metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   margin: 0 0 14px;
 }
@@ -63,10 +63,7 @@
   overflow-wrap: anywhere;
 }
 .metric-coverage dd { color: var(--loan-accent); }
-.loan-workspace-tabs { display: flex; gap: 3px; overflow-x: auto; border-bottom: 1px solid var(--loan-rule); margin-bottom: 16px; }
-.loan-workspace-tabs button { background: transparent; border: 0; border-bottom: 3px solid transparent; border-radius: 0; white-space: nowrap; }
-.loan-workspace-tabs [aria-selected="true"] { border-bottom-color: var(--loan-accent); color: var(--loan-accent); }
-.loan-workspace-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 16px; margin-bottom: 16px; align-items: start; }
+.loan-workspace-grid { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; align-items: start; }
 .loan-workspace-card { min-width: 0; border: 1px solid var(--loan-rule); border-radius: 9px; background: white; }
 .loan-workspace-card h2 { font-size: 16px; margin: 0; padding: 13px 15px; border-bottom: 1px solid var(--loan-rule); }
 .loan-workspace-terms { margin: 0 15px; }
@@ -88,5 +85,13 @@
 .loan-workspace-timeline li::before { content: ''; position: absolute; left: -6px; top: 11px; width: 10px; height: 10px; border-radius: 50%; background: var(--loan-accent); }
 .loan-workspace-timeline time { color: var(--loan-muted); font-size: 12px; }
 .loan-workspace-notice { margin: 10px 15px 0; padding: 10px 14px; border-radius: 7px; background: #ebf8ed; color: #275535; }
-@media (max-width: 840px) { .loan-workspace-grid { grid-template-columns: 1fr; } }
-@media (max-width: 680px) { .loan-workspace-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.loan-workspace-stack { display: grid; min-width: 0; gap: 13px; }
+.loan-workspace-meter { padding: 0 15px 12px; }
+.loan-workspace-meter progress { width: 100%; height: 9px; accent-color: #26854a; }
+.loan-workspace-meter[data-shortfall=true] progress { accent-color: #b26819; }
+.loan-workspace-requests { display: block; text-align: center; border: 1px solid var(--loan-rule); border-radius: 6px; padding: 8px; }
+@media (max-width: 840px) {
+  .loan-workspace-grid { grid-template-columns: minmax(0, 1fr); }
+  .loan-workspace-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

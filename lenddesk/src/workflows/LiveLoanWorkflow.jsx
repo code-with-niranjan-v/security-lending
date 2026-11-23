@@ -141,7 +141,7 @@ function LiveEditor({ kind, data, organizationId, onDismiss, onComplete, onBusyC
       onBusyChange?.(false)
     }
   }
-  function automaticSettlementReference() {
+  function automaticSettlementReference(action) {
     const key = `${l.id}:${action}`
     if (!settlementReferences.current.has(key)) {
       const operation = action === 'settle' ? 'SECURITY-DELIVERY' : action.startsWith('collateralConfirm:') ? 'COLLATERAL-RECEIPT' : action.startsWith('collateralRelease:') ? 'COLLATERAL-RELEASE' : 'RETURN-RECEIPT'
@@ -151,7 +151,7 @@ function LiveEditor({ kind, data, organizationId, onDismiss, onComplete, onBusyC
     }
     return settlementReferences.current.get(key)
   }
-  async function submit() {
+  async function submit(nextAction = action) {
     if (submitting.current) return
     submitting.current = true
     setBusy(true)
@@ -172,25 +172,25 @@ function LiveEditor({ kind, data, organizationId, onDismiss, onComplete, onBusyC
       body.clientRequestId = retry.current.id
       path = `/loans/${l.id}/${isMargin ? 'margin-call-requests' : 'recall-requests'}`
     } else {
-      path = action.startsWith('return:')
-        ? `/returns/${action.split(':')[1]}/settle`
-        : action.startsWith('returnReject:')
-          ? `/returns/${action.split(':')[1]}/reject`
-          : action.startsWith('collateralRelease:')
-            ? `/collateral/${action.split(':')[1]}/release-confirmations`
-            : action.startsWith('collateralReleaseReject:')
-              ? `/collateral/${action.split(':')[1]}/release-rejections`
-          : action.startsWith('collateralConfirm:')
-            ? `/collateral/${action.split(':')[1]}/confirm`
-            : action.startsWith('collateralReject:')
-              ? `/collateral/${action.split(':')[1]}/reject`
-          : `/loans/${l.id}/${action}`
+      path = nextAction.startsWith('return:')
+        ? `/returns/${nextAction.split(':')[1]}/settle`
+        : nextAction.startsWith('returnReject:')
+          ? `/returns/${nextAction.split(':')[1]}/reject`
+          : nextAction.startsWith('collateralRelease:')
+            ? `/collateral/${nextAction.split(':')[1]}/release-confirmations`
+            : nextAction.startsWith('collateralReleaseReject:')
+              ? `/collateral/${nextAction.split(':')[1]}/release-rejections`
+          : nextAction.startsWith('collateralConfirm:')
+            ? `/collateral/${nextAction.split(':')[1]}/confirm`
+            : nextAction.startsWith('collateralReject:')
+              ? `/collateral/${nextAction.split(':')[1]}/reject`
+          : `/loans/${l.id}/${nextAction}`
       body =
-        action === 'reject' || action.startsWith('returnReject:') || action.startsWith('collateralReject:') || action.startsWith('collateralReleaseReject:')
+        nextAction === 'reject' || nextAction.startsWith('returnReject:') || nextAction.startsWith('collateralReject:') || nextAction.startsWith('collateralReleaseReject:')
           ? { reason: reason.trim() }
-          : action === 'approve'
+          : nextAction === 'approve'
             ? {}
-            : { reference: automaticSettlementReference() }
+            : { reference: automaticSettlementReference(nextAction) }
     }
     try {
       const result = await lenderPost(
@@ -200,7 +200,7 @@ function LiveEditor({ kind, data, organizationId, onDismiss, onComplete, onBusyC
       if (mounted.current) {
         const requestStatus = isMargin || isRecall
           ? `Request ${result.id} recorded: ${display(result.status)}.`
-          : action === 'approve' ? 'Loan approved.' : 'Loan operation completed.'
+          : nextAction === 'approve' ? 'Loan approved.' : 'Loan operation completed.'
         dialog.current?.close()
         if (onComplete) {
           onComplete(requestStatus)
@@ -631,7 +631,7 @@ function LiveEditor({ kind, data, organizationId, onDismiss, onComplete, onBusyC
               className="wf-primary"
               type="button"
               disabled={busy}
-              onClick={submit}
+              onClick={() => submit()}
             >
               {busy ? 'Submitting…' : 'Confirm live operation'}
             </button>

@@ -32,3 +32,13 @@
   .manage-loan-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); row-gap: 10px; }
   .manage-loan-metrics > div:nth-child(even) { border: 0; }
 }
+
+.manage-loan-tabs { display: flex; gap: 8px; border-bottom: 1px solid #ded7ef; margin-bottom: 14px; }
+.manage-loan-tabs button { border: 0; border-radius: 0; border-bottom: 3px solid transparent; background: transparent; padding: 8px 12px; }
+.manage-loan .manage-loan-tabs button[aria-pressed=true] { background: transparent; border-inline-start: 0; border-bottom-color: #6141ee; }
+.manage-request-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.manage-loan .manage-request-filters button[aria-pressed=true] { border: 1px solid #6141ee; background: #6141ee; color: white; }
+.manage-request-selected td { background: #efe8fe; }
+.manage-loan .manage-request-selected button[aria-pressed=true] { border: 0; background: transparent; text-decoration: underline; }
+.manage-request-note { padding: 9px; background: #f4effa; border-radius: 5px; margin: 12px 0; }
+.manage-request-review .manage-loan-facts > div { padding-block: 8px; }
