@@ -7,7 +7,9 @@ async function marketGet(path) {
   const response = await fetch(marketBase + path);
   const payload = await response.json();
   if (!response.ok)
-    throw new Error(payload?.message || "Market data unavailable");
+    throw new Error(
+      payload?.message || payload?.detail || payload?.title || "Market data unavailable",
+    );
   return payload?.data ?? payload;
 }
 export const tradingDeskApi = {

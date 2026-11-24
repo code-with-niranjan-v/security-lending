@@ -85,3 +85,10 @@
   .ld-inventory .ldi-filters select, .ld-inventory .ldi-filters input { flex: 1; min-width: 0; max-width: 72%; }
   .ld-inventory .ldi-footer { align-items: flex-start; flex-direction: column; }
 }
+
+
+/* Retry action uses the existing LendDesk purple brand palette. */
+.ld-inventory .ldi-retry-button{min-height:29px;padding:0 10px;border:1px solid #4f39df;border-radius:4px;background:#4f39df;color:#fff;font:inherit;font-size:11px;font-weight:650;cursor:pointer;transition:background-color .15s,border-color .15s,box-shadow .15s}
+.ld-inventory .ldi-retry-button:hover:not(:disabled){background:#3f2bc4;border-color:#3f2bc4;box-shadow:0 2px 6px #4f39df24}
+.ld-inventory .ldi-retry-button:focus-visible{outline:2px solid #4f39df;outline-offset:2px}
+.ld-inventory .ldi-retry-button:disabled{cursor:not-allowed;opacity:.5}

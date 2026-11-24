@@ -118,6 +118,7 @@ function SmallTable({ title, columns, rows, error }) {
 
 function ExpandedInventory({ security, live, org, data, errors }) {
   const [detail, setDetail] = useState(null)
+  const [historyRetry, setHistoryRetry] = useState(0)
   useEffect(() => {
     if (!live) return undefined
     const controller = new AbortController()
@@ -134,7 +135,7 @@ function ExpandedInventory({ security, live, org, data, errors }) {
       })
     })
     return () => controller.abort()
-  }, [live, org, security.id, security.securityId])
+  }, [live, org, security.id, security.securityId, historyRetry])
 
   const select = resource => (data[resource] ?? []).filter(row => related(row, security, live))
   const borrower = row => live
@@ -165,7 +166,10 @@ function ExpandedInventory({ security, live, org, data, errors }) {
           <h3>{security.symbol} — price history</h3>
           <div className="ldi-chart-legend"><span>━ Price ({live ? 'INR' : 'USD'})</span><small>{live ? 'Latest 120 candles' : 'Illustrative demo series'}</small></div>
           {live && !detail ? <p className="ldi-empty">Loading price history…</p> : detail?.error ? (
-            <p className="ldi-empty" role="status">{detail.error}</p>
+            <div className="ldi-empty" role="alert">
+              <p>{detail.error}</p>
+              <button type="button" className="ldi-retry-button" onClick={() => { setDetail(null); setHistoryRetry(value => value + 1) }}>Retry price history</button>
+            </div>
           ) : prices.length < 2 ? <p className="ldi-empty">Insufficient price history.</p> : (
             <>
               <svg className="ldi-price-svg" viewBox="0 0 270 100" role="img" aria-label={`${security.symbol} price history`}>
