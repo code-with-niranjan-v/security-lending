@@ -10,6 +10,15 @@ import java.time.Instant;
 @Table(name="kafka_publication")
 @Getter @Setter @NoArgsConstructor
 public class KafkaPublication {
+  @com.fasterxml.jackson.annotation.JsonIgnore
+  @jakarta.persistence.Column(name = "trace_parent", length = 55)
+  private String traceParent;
+
+  @jakarta.persistence.PrePersist
+  private void captureTraceParent() {
+    traceParent = com.example.fix_adapter_service.observability.OutboxTrace.capture();
+  }
+
     @Id
     @GeneratedValue(strategy=GenerationType.IDENTITY)
     @Column(name="id",nullable=false)

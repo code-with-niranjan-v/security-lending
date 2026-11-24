@@ -15,6 +15,13 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 public class OutboxEvent {
+  @jakarta.persistence.Column(name = "trace_parent", length = 55)
+  private String traceParent;
+
+  @jakarta.persistence.PrePersist
+  private void captureTraceParent() {
+    traceParent = com.example.borrower_service.observability.OutboxTrace.capture();
+  }
 
   @Column(name = "status", nullable = false, length = 30)
   private String status = "PENDING";

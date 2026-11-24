@@ -4,7 +4,12 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.example.lender_service.dto.*;
 import com.example.lender_service.repository.MslaRepository;
+import com.example.lender_service.repository.OutboxEventRepository;
 import com.example.lender_service.service.*;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.trace.TraceFlags;
+import io.opentelemetry.api.trace.TraceState;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.*;
@@ -17,6 +22,7 @@ import org.apache.kafka.common.serialization.StringDeserializer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.kafka.core.*;
 import org.springframework.kafka.test.EmbeddedKafkaBroker;
 import org.springframework.kafka.test.context.EmbeddedKafka;
@@ -54,6 +60,7 @@ class KafkaIntegrationTests {
   @Autowired MslaRepository agreements;
   @Autowired JsonService json;
   @Autowired OutboxService outbox;
+  @Autowired OutboxEventRepository outboxEvents;
 
   @Test
   void trustedAdapterCommandIsConsumedAndConfirmationIsPublishedWhileMissingProvenanceGoesToDlt()
@@ -89,7 +96,17 @@ class KafkaIntegrationTests {
           () -> agreements.findByConnectionIdAndBorrowerMslaId(c.getId(), 10L).isPresent(),
           "Kafka command was not ingested");
       var agreement = agreements.findByConnectionIdAndBorrowerMslaId(c.getId(), 10L).orElseThrow();
-      decisions.decide(org.getId(), agreement.getId(), true, "Approved");
+      var parent = SpanContext.createFromRemoteParent(
+          "50cfae1b2ac64618b323221677f49931", "525e1a82c44ded37",
+          TraceFlags.getSampled(), TraceState.getDefault());
+      try (var scope = Span.wrap(parent).makeCurrent()) {
+        decisions.decide(org.getId(), agreement.getId(), true, "Approved");
+      }
+      assertTrue(outboxEvents.findByOrganizationId(org.getId(), Pageable.unpaged()).stream()
+          .anyMatch(event -> event.getPayload().contains("AGREEMENT_ACCEPTED")
+              && event.getTraceParent() != null
+              && event.getTraceParent().startsWith("00-" + parent.getTraceId() + "-")),
+          "The queued confirmation must retain the original trace ID");
       for (int i = 0; i < 20 && !outbox.pending().isEmpty(); i++)
         for (var key : outbox.pending()) outbox.publishNext(key);
       boolean accepted = false;

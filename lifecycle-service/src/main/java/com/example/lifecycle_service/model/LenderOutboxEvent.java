@@ -7,6 +7,14 @@ import lombok.Getter;
 @Entity
 @Table(name = "outbox_event")
 public class LenderOutboxEvent {
+  @jakarta.persistence.Column(name = "trace_parent", length = 55)
+  private String traceParent;
+
+  @jakarta.persistence.PrePersist
+  private void captureTraceParent() {
+    traceParent = com.example.lifecycle_service.observability.OutboxTrace.capture();
+  }
+
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;

@@ -2,7 +2,8 @@ param(
     [switch]$Plan,
     [switch]$Lendora,
     [ValidateRange(10, 1800)]
-    [int]$StartupTimeoutSeconds = 240
+    [int]$StartupTimeoutSeconds = 240,
+    [string]$ObservabilityAgent
 )
 
 $ErrorActionPreference = 'Stop'
@@ -171,8 +172,26 @@ function Start-Component($Component) {
         }
     } else {
         Write-Host "Starting $($Component.Name) on port $($Component.Port)..."
-        Start-Process -FilePath $env:ComSpec -WorkingDirectory $directory -WindowStyle Normal `
-            -ArgumentList "/d /k title $($Component.Name) & $($Component.Command)"
+        $launch = "/d /k title $($Component.Name) & $($Component.Command)"
+        if ($ObservabilityAgent -and $Component.Port -in (8080..8086)) {
+            $previousMavenArgs = $env:MAVEN_ARGS
+            $previousServiceName = $env:OTEL_SERVICE_NAME
+            try {
+                $env:MAVEN_ARGS = ('{0} "-Dspring-boot.run.agents={1}"' -f
+                    $previousMavenArgs, $ObservabilityAgent).Trim()
+                $env:OTEL_SERVICE_NAME = switch ($Component.Port) {
+                    8082 { 'borrower-fix-adapter' }
+                    8083 { 'lender-fix-adapter' }
+                    default { $Component.Folder }
+                }
+                Start-Process -FilePath $env:ComSpec -WorkingDirectory $directory -WindowStyle Normal -ArgumentList $launch
+            } finally {
+                $env:MAVEN_ARGS = $previousMavenArgs
+                $env:OTEL_SERVICE_NAME = $previousServiceName
+            }
+        } else {
+            Start-Process -FilePath $env:ComSpec -WorkingDirectory $directory -WindowStyle Normal -ArgumentList $launch
+        }
     }
     $null = Wait-Ready $Component.Name {
         if ($Component.ReadyPath -eq '/api/v1/auth/me') { return Test-LoginRequired $Component.Port $Component.ReadyPath }
@@ -222,6 +241,22 @@ try {
         Initialize-LendoraKey
         $env:LENDORA_ROUTING_ENABLED = 'true'
         Write-Host 'Lendora mode requires the lendora_db PostgreSQL database in addition to the existing demo databases.'
+    }
+
+    if ($ObservabilityAgent) {
+        $ObservabilityAgent = (Resolve-Path -LiteralPath $ObservabilityAgent).Path
+        foreach ($service in $services) {
+            if (Test-Port $service.Port) {
+                throw "Stop $($service.Name) on port $($service.Port) before starting with observability."
+            }
+        }
+        $env:SPRING_PROFILES_INCLUDE = (@($env:SPRING_PROFILES_INCLUDE, 'observability') | Where-Object { $_ }) -join ','
+        if (-not $env:OTEL_EXPORTER_OTLP_ENDPOINT) { $env:OTEL_EXPORTER_OTLP_ENDPOINT = 'http://127.0.0.1:4318' }
+        $env:OTEL_EXPORTER_OTLP_PROTOCOL = 'http/protobuf'
+        $env:OTEL_TRACES_EXPORTER = 'otlp'
+        $env:OTEL_METRICS_EXPORTER = 'none'
+        $env:OTEL_LOGS_EXPORTER = 'none'
+        $env:OTEL_PROPAGATORS = 'tracecontext'
     }
 
     Start-Component $portal

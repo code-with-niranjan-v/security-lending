@@ -10,6 +10,15 @@ import java.time.Instant;
 @Table(name="outbound_message")
 @Getter @Setter @NoArgsConstructor
 public class OutboundMessage {
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @Column(name="trace_parent",length=55)
+    private String traceParent;
+
+    @PrePersist
+    private void captureTraceParent() {
+        traceParent = com.example.fix_adapter_service.observability.OutboxTrace.capture();
+    }
+
     @Id
     @GeneratedValue(strategy=GenerationType.IDENTITY)
     @Column(name="id",nullable=false)

@@ -1,5 +1,7 @@
 package com.example.fix_adapter_service.service;
 
+import com.example.fix_adapter_service.observability.OutboxTrace;
+import org.slf4j.LoggerFactory;
 import com.example.fix_adapter_service.config.AdapterProperties;
 import com.example.fix_adapter_service.model.PublicationState;
 import com.example.fix_adapter_service.repository.KafkaPublicationRepository;
@@ -12,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class PublicationService {
+  private static final org.slf4j.Logger LOG = LoggerFactory.getLogger(PublicationService.class);
 
   private final KafkaPublicationRepository publications;
   private final BusinessEventPublisher publisher;
@@ -46,17 +49,20 @@ public class PublicationService {
       var received = inbound
         .findById(publication.getInboundMessageId())
         .orElseThrow();
-      publisher.publish(
-        publication.getTopic(),
-        publication.getPartitionKey(),
-        publication.getPayload(),
-        java.util.Map.of(
-          "x-counterparty-id",
-          received.getCounterpartyId(),
-          "x-fix-session",
-          received.getSessionKey()
-        )
-      );
+      try (var traceScope = OutboxTrace.restore(publication.getTraceParent())) {
+        publisher.publish(
+          publication.getTopic(),
+          publication.getPartitionKey(),
+          publication.getPayload(),
+          java.util.Map.of(
+            "x-counterparty-id",
+            received.getCounterpartyId(),
+            "x-fix-session",
+            received.getSessionKey()
+          )
+        );
+        LOG.atDebug().addKeyValue("event_id", publication.getEventId()).log("Published outbox event");
+      }
       publication.setState(PublicationState.PUBLISHED);
       publication.setPublishedAt(now);
       publication.setLastError(null);

@@ -1,0 +1,3 @@
+services:
+  prometheus:
+    extra_hosts: ["host.docker.internal:${OBSERVABILITY_HOST_GATEWAY:-host-gateway}"]

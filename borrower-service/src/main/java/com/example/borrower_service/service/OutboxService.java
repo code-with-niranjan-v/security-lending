@@ -1,5 +1,7 @@
 package com.example.borrower_service.service;
 
+import com.example.borrower_service.observability.OutboxTrace;
+import org.slf4j.LoggerFactory;
 import static com.example.borrower_service.repository.BorrowerRepository.*;
 
 import com.example.borrower_service.model.*;
@@ -15,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class OutboxService {
+  private static final org.slf4j.Logger LOG = LoggerFactory.getLogger(OutboxService.class);
 
   private final BorrowerRepository db;
 
@@ -87,13 +90,16 @@ public class OutboxService {
         });
       }
       if (kafkaEnabled && !Boolean.TRUE.equals(row.get("published"))) {
-        kafka
-          .send(
-            isCommand(row.get("event_type").toString()) ? commandsTopic : topic,
-            String.valueOf(org),
-            payload
-          )
-          .get(10, TimeUnit.SECONDS);
+        try (var traceScope = OutboxTrace.restore(event.getTraceParent())) {
+          kafka
+            .send(
+              isCommand(row.get("event_type").toString()) ? commandsTopic : topic,
+              String.valueOf(org),
+              payload
+            )
+            .get(10, TimeUnit.SECONDS);
+          LOG.atDebug().addKeyValue("outbox_id", id).addKeyValue("aggregate_id", event.getAggregateId()).log("Published outbox event");
+        }
         db.edit(OutboxEvent.class, id, entity -> {
           entity.setPublished(true);
         });

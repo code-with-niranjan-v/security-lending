@@ -2,9 +2,13 @@ package com.example.fix_adapter_service.service;
 
 import com.example.fix_adapter_service.config.AdapterProperties;
 import com.example.fix_adapter_service.model.*;
+import com.example.fix_adapter_service.observability.OutboxTrace;
 import com.example.fix_adapter_service.repository.OutboundMessageRepository;
+import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.trace.StatusCode;
 import java.time.Clock;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class OutboundDeliveryService {
+  private static final org.slf4j.Logger LOG = LoggerFactory.getLogger(OutboundDeliveryService.class);
 
   private final OutboundMessageRepository messages;
   private final FixTransport transport;
@@ -49,10 +54,20 @@ public class OutboundDeliveryService {
       ) message.setState(DeliveryState.FAILED);
       return;
     }
-    try {
-      if (
-        !transport.send(sessionKey, codec.business(message))
-      ) throw new IllegalStateException("FIX send returned false");
+    try (var parent = OutboxTrace.restore(message.getTraceParent())) {
+      var span = GlobalOpenTelemetry.getTracer("lending.fix").spanBuilder("FIX send")
+          .setAttribute("lending.event_id", message.getEventId()).startSpan();
+      try (var scope = span.makeCurrent()) {
+        if (!transport.send(sessionKey, codec.business(message))) {
+          throw new IllegalStateException("FIX send returned false");
+        }
+        LOG.atDebug().addKeyValue("event_id", message.getEventId()).log("Sent FIX event");
+      } catch (Exception e) {
+        span.setStatus(StatusCode.ERROR);
+        throw e;
+      } finally {
+        span.end();
+      }
       message.setState(DeliveryState.AWAITING_RECEIPT);
       message.setLastSentAt(now);
       message.setLastError(null);

@@ -1,5 +1,7 @@
 package com.example.lender_service.service;
 
+import com.example.lender_service.observability.OutboxTrace;
+import org.slf4j.LoggerFactory;
 import com.example.lender_service.repository.OutboxEventRepository;
 import java.time.Clock;
 import java.util.List;
@@ -13,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class OutboxService {
+  private static final org.slf4j.Logger LOG = LoggerFactory.getLogger(OutboxService.class);
 
   private final OutboxEventRepository outbox;
   private final KafkaTemplate<String, String> kafka;
@@ -64,9 +67,12 @@ public class OutboxService {
         event.setWsSent(true);
       }
       if (enabled && !event.getPublished()) {
-        kafka
-          .send(event.getTopic(), event.getPartitionKey(), event.getPayload())
-          .get(20, TimeUnit.SECONDS);
+        try (var traceScope = OutboxTrace.restore(event.getTraceParent())) {
+          kafka
+            .send(event.getTopic(), event.getPartitionKey(), event.getPayload())
+            .get(20, TimeUnit.SECONDS);
+          LOG.atDebug().addKeyValue("event_id", event.getEventId()).log("Published outbox event");
+        }
         event.setPublished(true);
       }
       event.setLastError(null);
