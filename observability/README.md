@@ -2,6 +2,30 @@
 
 Keep your existing Grafana at `http://localhost:3000`. Grafana reads metrics from a Prometheus data source and traces from a Tempo data source. The application exposes metrics for scraping and sends traces to an OTLP receiver.
 
+## Windows quick start for metrics only
+
+Use this when Grafana is already running at `http://localhost:3000` and you have the Prometheus binary. Prometheus pulls metrics from the Lendora backend, and Grafana queries Prometheus.
+
+1. On `feature/observability-traceability`, start PostgreSQL and stop any running demo backend JVMs. From the repository root in PowerShell, run:
+
+   ```powershell
+   $env:SPRING_PROFILES_INCLUDE = 'observability'
+   .\start-lendora.cmd
+   ```
+
+2. Stop your current Prometheus process. In a separate PowerShell window at the repository root, restart the same binary with the repo's scrape config. Replace the executable path with yours.
+
+   ```powershell
+   & 'C:\path\to\prometheus.exe' --config.file=observability/prometheus.yaml --web.listen-address=127.0.0.1:9090
+   ```
+
+   If your existing Prometheus configuration scrapes other applications, copy the lending scrape jobs into that config and restart Prometheus with it instead. Keep any existing storage path arguments.
+
+3. Open [Prometheus Targets](http://localhost:9090/targets) and check that the `lending-services` targets for your running backends show **UP**.
+4. In Grafana, open **Connections → Data sources**, add or select **Prometheus**, set the URL to `http://127.0.0.1:9090`, and click **Save & test**. Import [lending-operations.json](grafana/lending-operations.json) and select that data source.
+
+The OpenTelemetry agent, Collector, and Tempo are only needed for the tracing setup below. The Kafka panels require a Kafka exporter.
+
 ## Use your existing data sources
 
 - Add the targets in [prometheus.yaml](prometheus.yaml) to your Prometheus configuration and reload it. The applications expose `/actuator/prometheus` on ports 8080–8086 with the observability profile enabled.
