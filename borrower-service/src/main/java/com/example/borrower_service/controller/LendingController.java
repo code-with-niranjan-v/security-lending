@@ -28,6 +28,7 @@ public class LendingController {
     @PostMapping("/loans/collateral-preview") public ApiResponse<?> loanCollateralPreview(@PathVariable long org,@Valid @RequestBody LoanCollateralPreviewRequest r) {return ApiResponse.ok(loanCollateralPreview.preview(org,r));}
     @PostMapping("/loans") public ApiResponse<?> create(@PathVariable long org,@Valid @RequestBody LoanRequest r) {return ApiResponse.ok(lending.createLoan(org,r));}
     @GetMapping("/loans/{id}") public ApiResponse<?> detail(@PathVariable long org,@PathVariable long id) {return ApiResponse.ok(portfolio.loan(org,id));}
+    @PostMapping("/margin-calls/{id}/reduce-exposure") public ApiResponse<?> reduceExposure(@PathVariable long org,@PathVariable long id) {return ApiResponse.ok(lending.reduceExposure(org,id));}
     @PostMapping("/loans/{id}/returns") public ApiResponse<?> requestReturn(@PathVariable long org,@PathVariable long id,@Valid @RequestBody ReturnRequest r) {return ApiResponse.ok(lending.requestReturn(org,id,r));}
     @PostMapping("/recalls/{id}/returns") public ApiResponse<?> respondToRecall(@PathVariable long org,@PathVariable long id,@Valid @RequestBody ReturnRequest r) {return ApiResponse.ok(lending.respondToRecall(org,id,r));}
     @GetMapping("/returns") public ApiResponse<?> returns(@PathVariable long org,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="50") int size) {return ApiResponse.ok(read.list(org,"loan_return",page,size));}

@@ -31,6 +31,9 @@ public class LoanReturn {
   @Column(name = "recall_id")
   private Long recallId;
 
+  @Column(name = "margin_call_id")
+  private Long marginCallId;
+
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   @Column(name = "id", nullable = false)

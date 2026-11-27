@@ -1704,6 +1704,47 @@ class BorrowerWorkflowTests {
     }
 
     @Test
+    void reduceExposureCreatesASettlementGatedReturnForMarginShortfall() throws Exception {
+        long org = org(), security = security("100");
+        fund(org, "10000");
+        long loan = loan(org, security, agreement(org, 0), 10), call = sequence.incrementAndGet();
+        apply(org, "LOAN_SETTLED", loan, 1, Map.of());
+        db.holding(org, security);
+        db.edit(Holding.class, new HoldingId(org, security), h -> h.setBorrowedQuantity(10L));
+        var fields = new HashMap<String, Object>();
+        fields.put("loanId", loan);
+        fields.put("externalId", "reduce-exposure-" + call);
+        fields.put("amount", "250");
+        fields.put("fulfilledAmount", "0");
+        fields.put("reason", "Collateral shortfall");
+        fields.put("status", "OPEN");
+        fields.put("dueAt", Instant.now().plusSeconds(3600).toString());
+        apply(org, "MARGIN_CALL_UPDATED", call, 1, fields);
+
+        var result = lending.reduceExposure(org, call);
+        long returnId = n(result, "id");
+        var returned = db.owned(LoanReturn.class, org, returnId);
+        assertEquals(3L, n(returned, "quantity"));
+        assertEquals(call, n(returned, "margin_call_id"));
+        assertEquals("PENDING", returned.get("status"));
+        assertEquals("OPEN", db.owned(MarginCall.class, org, call).get("status"));
+        assertEquals(7L, n(db.owned(Loan.class, org, loan), "outstanding_quantity"));
+
+        var outbox = db.rows(OutboxEvent.class, eq("organizationId", org), eq("eventType", "RETURN_REQUESTED"));
+        var payload = tools.jackson.databind.json.JsonMapper.builder().build().readTree(outbox.get(outbox.size()-1).get("payload").toString());
+        assertEquals(call, payload.path("data").path("marginCallId").asLong());
+        assertEquals(3L, payload.path("data").path("quantity").asLong());
+
+        apply(org, "RETURN_SETTLED", returnId, 1, Map.of());
+        assertEquals("OPEN", db.owned(MarginCall.class, org, call).get("status"));
+        var updated = new HashMap<>(fields);
+        updated.put("fulfilledAmount", "250");
+        updated.put("status", "FULFILLED");
+        apply(org, "MARGIN_CALL_UPDATED", call, 2, updated);
+        assertEquals("FULFILLED", db.owned(MarginCall.class, org, call).get("status"));
+    }
+
+    @Test
     void marginCancellationChecksUnconfirmedAndConfirmedPledgesAndFencesNewResponses() {
         for (int response = 0; response < 3; response++) {
             long org = org(), security = security("100");

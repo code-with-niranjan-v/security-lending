@@ -173,3 +173,8 @@ the requested owner default ID. It completes that request without inferring cust
 or cash settlement. The current lifecycle module has no buy-in execution consumer;
 that owner integration remains required for actual execution. The frontend reflects
 queued state and the reports supplied through the existing lifecycle Kafka consumer.
+
+
+### Margin-call exposure reduction returns
+
+A borrower may include `marginCallId` (the borrower's margin-call owner reference) in `RETURN_REQUESTED.data` when returning shares to reduce a margin shortfall. The lender validates that the call belongs to the same borrower connection and loan, stores its lender-local margin-call reference on the return, and exposes the link in the LendDesk returns overview. Only after the lender settles the return does the lender apply the returned shares' market value multiplied by the MSLA coverage ratio to the call's fulfilled amount and publish a versioned `MARGIN_CALL_UPDATED` confirmation to the borrower.

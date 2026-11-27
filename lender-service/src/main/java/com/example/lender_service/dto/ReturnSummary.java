@@ -20,4 +20,5 @@ public record ReturnSummary(
     Instant loanClosedAt,
     Long connectionId,
     String borrowerName,
-    String collateralReleaseState) {}
+    String collateralReleaseState,
+    Long marginCallId) {}

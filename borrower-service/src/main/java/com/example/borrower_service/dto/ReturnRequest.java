@@ -1,11 +1,8 @@
 package com.example.borrower_service.dto;
 
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.*;
-import java.math.BigDecimal;
-import java.time.*;
-import java.util.List;
+import jakarta.validation.constraints.Positive;
 
-public record ReturnRequest(@Positive long quantity,@Positive Long recallId) {
-    public ReturnRequest(long quantity) {this(quantity,null);}
+public record ReturnRequest(@Positive long quantity, @Positive Long recallId, @Positive Long marginCallId) {
+    public ReturnRequest(long quantity) { this(quantity, null, null); }
+    public ReturnRequest(long quantity, Long recallId) { this(quantity, recallId, null); }
 }

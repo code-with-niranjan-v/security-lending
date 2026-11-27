@@ -35,6 +35,9 @@ public class LoanReturn {
   @Column(name = "recall_id")
   private Long recallId;
 
+  @Column(name = "margin_call_id")
+  private Long marginCallId;
+
   @Column(name = "status", nullable = false, length = 40)
   private String status;
 

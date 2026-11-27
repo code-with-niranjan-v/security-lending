@@ -46,7 +46,7 @@ The market-data service currently exposes REST and STOMP, not Kafka. The borrowe
 | `LOAN_REQUESTED` | Borrower loan ID | reservationId, quantity, proposed collateral |
 | `COLLATERAL_PLEDGE_REQUESTED` | Borrower loan ID | positionId, allocation (including optional marginCallId) |
 | `COLLATERAL_RELEASE_REQUESTED` | Borrower collateral-position ID | loanId |
-| `RETURN_REQUESTED` | Borrower return ID | loanId, quantity, recallId (0 when absent) |
+| `RETURN_REQUESTED` | Borrower return ID | loanId, quantity, recallId (0 when absent), optional marginCallId for a reduce-exposure response |
 | `FEE_REQUESTED` | Borrower payment-request ID | amount, feeId, clientRequestId |
 | `DEPOSIT_REQUESTED`, `WITHDRAWAL_REQUESTED` | Borrower payment-request ID | amount, clientRequestId |
 
@@ -69,6 +69,8 @@ Kafka publication is **at least once**. Event IDs are created when writing the o
 ```
 
 Use the same event ID across retries. `version` must increase for **the resource**, not merely the event type: reservation confirmation, update, release, rejection and expiry share one version sequence. Likewise, pledge/release events share a collateral-position sequence, and rebate accrual/payment share a rebate sequence. Source services and adapters must preserve or coordinate that version.
+
+For a reduce-exposure response, `RETURN_REQUESTED.data.marginCallId` correlates the return with the originating margin call. The borrower reserves the requested shares and waits for `RETURN_SETTLED`; it does not locally mark the margin call fulfilled. After settlement, the authoritative margin/valuation owner must recalculate the remaining shortfall and publish a versioned `MARGIN_CALL_UPDATED` projection.
 
 The borrower locks organization state, deduplicates event IDs, and ignores a version at or below the current resource version. Projected external records use globally unique source IDs within their resource type; locally initiated resources retain their borrower IDs. Counterparty reference versions are global. Only trusted adapter/owner services should produce to the confirmation topic; this backend exposes no public confirmation endpoint.
 

@@ -39,6 +39,7 @@ public class BorrowerCommandService {
   private final EventService events;
   private final RecallService recalls;
   private final MarginCallService marginCalls;
+  private final MarginCallRepository marginCallsRepository;
   private final JsonService json;
   private final Clock clock;
   private final ReturnCancellationRepository returnCancellations;
@@ -384,6 +385,14 @@ public class BorrowerCommandService {
           r.quantity() <= loan.getOutstandingQuantity() - pending,
           "Return exceeds uncommitted outstanding quantity");
       if (r.recallId() != 0) recalls.validateReturn(loan, r.recallId(), r.quantity());
+      if (r.marginCallId() != 0) {
+        var call = found(marginCallsRepository.findByOrganizationIdAndOwnerReferenceId(
+            c.getOrganizationId(), r.marginCallId()));
+        require(call.getLoanId().equals(loan.getId())
+                && call.getConnectionId().equals(c.getId())
+                && Set.of("PENDING", "OPEN", "PARTIALLY_FULFILLED", "OVERDUE").contains(call.getStatus()),
+            "Margin call does not match this active borrower loan");
+      }
     } catch (ResponseStatusException rejected) {
       events.confirm(
           c,
@@ -400,6 +409,10 @@ public class BorrowerCommandService {
     x.setBorrowerReturnId(command.referenceId());
     x.setQuantity(r.quantity());
     x.setRecallId(r.recallId() == 0 ? null : r.recallId());
+    if (r.marginCallId() != 0) {
+      var call = found(marginCallsRepository.findByOrganizationIdAndOwnerReferenceId(c.getOrganizationId(), r.marginCallId()));
+      x.setMarginCallId(call.getId());
+    }
     x.setStatus("PENDING");
     x.setCreatedAt(clock.instant());
     returns.saveAndFlush(x);

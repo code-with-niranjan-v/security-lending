@@ -27,6 +27,7 @@ public class LoanService {
   private final MarketService market;
   private final EventService events;
   private final RecallService recalls;
+  private final MarginCallService marginCalls;
   private final Clock clock;
 
   public BigDecimal exposure(long mslaId) {
@@ -157,6 +158,7 @@ public class LoanService {
         r.getBorrowerReturnId(),
         Map.of("reference", reference));
     if (settle) recalls.applySettlement(l, r);
+    if (settle) marginCalls.applyExposureReduction(l, r);
     events.local(
         org,
         settle ? "LOAN_RETURN_SETTLED" : "LOAN_RETURN_REJECTED",

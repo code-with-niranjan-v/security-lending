@@ -23,6 +23,7 @@ public class MarginCallService {
   private final CollateralPositionRepository positions;
   private final MarketService market;
   private final TenantService tenants;
+  private final MslaRepository agreements;
 
   @Transactional
   public Map<String, Object> confirm(
@@ -230,6 +231,25 @@ public class MarginCallService {
     call.setFulfilledAmount(fulfilled);
     call.setStatus(status);
     publish(call, loan, position.getSettlementReference());
+  }
+
+  /** Apply the coverage released by a lender-settled return to its originating margin call. */
+  void applyExposureReduction(Loan loan, LoanReturn returned) {
+    if (returned.getMarginCallId() == null) return;
+    var call = found(calls.findByIdAndOrganizationId(returned.getMarginCallId(), loan.getOrganizationId()));
+    require(call.getLoanId().equals(loan.getId())
+        && call.getConnectionId().equals(loan.getConnectionId()),
+        "Exposure-reduction return does not match its margin call");
+    if (!Set.of("PENDING", "OPEN", "PARTIALLY_FULFILLED", "OVERDUE").contains(call.getStatus())) return;
+    var agreement = found(agreements.findByIdAndOrganizationId(loan.getMslaId(), loan.getOrganizationId()));
+    BigDecimal released = market.price(loan.getSecurityId()).value()
+        .multiply(BigDecimal.valueOf(returned.getQuantity()))
+        .multiply(agreement.getCoverageRatio());
+    BigDecimal fulfilled = call.getFulfilledAmount().add(released).min(call.getAmount());
+    if (fulfilled.compareTo(call.getFulfilledAmount()) <= 0) return;
+    call.setFulfilledAmount(fulfilled);
+    call.setStatus(fulfilled.compareTo(call.getAmount()) >= 0 ? "FULFILLED" : "PARTIALLY_FULFILLED");
+    publish(call, loan, returned.getSettlementReference());
   }
 
   private BigDecimal recognizedValue(CollateralPosition position) {
